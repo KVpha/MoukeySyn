@@ -34,7 +34,7 @@ public class ServerCore
     private int lastCalibratedX = -1;  // 上次校准的X坐标
     private int lastCalibratedY = -1;  // 上次校准的Y坐标
     private long lastCalibrationTime = 0;
-    private const long CALIBRATION_INTERVAL = 100; // 100毫秒校准一次
+    private const long CALIBRATION_INTERVAL = 5000; // 100毫秒校准一次
 
     public ServerCore(LogHandler logHandler)
     {
