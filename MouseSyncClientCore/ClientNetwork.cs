@@ -1,4 +1,4 @@
-﻿
+
 using CommonLib;
 using MouseSyncClientCore;
 using System;
@@ -60,8 +60,11 @@ public class ClientNetwork
         try{
             if (splited[0] == DataExchange.MOUSE)
             {
-
                 handleMouseEvent(splited);
+            }
+            else if (splited[0] == DataExchange.MOUSE_RELATIVE)
+            {
+                handleMouseEventRelative(splited);
             }
             else if (splited[0] == DataExchange.KEY)
             {
@@ -74,6 +77,8 @@ public class ClientNetwork
     
     }
     public static  bool isSimulate=true;
+    
+    // 处理绝对鼠标移动事件
     private void handleMouseEvent(string[] msg)
     {
         int button = int.Parse(msg[1]);
@@ -122,6 +127,50 @@ public class ClientNetwork
         
 
     }
+    
+    // 处理相对鼠标移动事件（用于3D游戏）
+    private void handleMouseEventRelative(string[] msg)
+    {
+        int button = int.Parse(msg[1]);
+        int deltaX = int.Parse(msg[2]);
+        int deltaY = int.Parse(msg[3]);
+        var mouseData = int.Parse(msg[4]);
+        
+        MOUSEINPUT mouseInput = new();
+        mouseInput.dx = deltaX;
+        mouseInput.dy = deltaY;
+        mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_MOVE;
+
+        if (button==(int)MouseMessagesHook.WM_MOUSEWHEEL) {
+            if (Programe.isDebug)
+            {
+                LogHandler("Simulate wheel (relative mode)");
+            }
+            mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_WHEEL;
+            mouseInput.mouseData = mouseData>>16;
+        }
+        else
+        {
+            if (Programe.isDebug)
+            {
+                LogHandler("simulate btn press (relative mode)");
+            }
+            if (DataExchange.MOUSE_KEY_MAP.ContainsKey(button))
+            {
+                mouseInput.dwFlags = DataExchange.MOUSE_KEY_MAP[button];
+            }
+            else
+            {
+                LogHandler("Error:can not parse :" + button);
+            }
+        }
+        
+        if (isSimulate)
+        {
+            Input.sendMouseInputRelative(mouseInput);
+        }
+    }
+    
 /*    [Obsolete]
     private void handleMouseEvent_obsolete(string[] msg)
     {
