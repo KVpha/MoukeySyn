@@ -11,6 +11,11 @@ public class ServerCore
     int port = Info.instance.Server_Port;
     public static ServerCore instance;
     Thread broadcastThread;
+    
+    // 用于相对鼠标模式的增量积累（防止过小的增量被忽略）
+    private int accumulatedDeltaX = 0;
+    private int accumulatedDeltaY = 0;
+    private const int DELTA_THRESHOLD = 1; // 最小增量阈值
 
     public ServerCore(LogHandler logHandler)
     {
@@ -189,10 +194,38 @@ public class ServerCore
         {
             if (Info.instance.UseRelativeMouseMode)
             {
-                clients[i].sendMouseRelative(e);
+                // 相对鼠标模式：使用增量移动
+                // 只发送鼠标移动事件的增量，忽略其他事件
+                if ((MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
+                {
+                    // 累积增量，避免过小的增量
+                    accumulatedDeltaX += e.deltaX;
+                    accumulatedDeltaY += e.deltaY;
+                    
+                    // 仅当增量足够大时才发送
+                    if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
+                        Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
+                    {
+                        clients[i].sendMouseRelative(new MouseInputData
+                        {
+                            code = e.code,
+                            hookStruct = e.hookStruct,
+                            deltaX = accumulatedDeltaX,
+                            deltaY = accumulatedDeltaY
+                        });
+                        accumulatedDeltaX = 0;
+                        accumulatedDeltaY = 0;
+                    }
+                }
+                else
+                {
+                    // 非移动事件（��钮点击等）直接发送
+                    clients[i].sendMouseRelative(e);
+                }
             }
             else
             {
+                // 绝对坐标模式：使用绝对位置
                 clients[i].sendMouse(e);
             }
         }
