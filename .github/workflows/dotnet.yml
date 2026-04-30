@@ -21,7 +21,7 @@ jobs:
       with:
         dotnet-version: 9.0.x
     - name: Restore dependencies
-      run: dotnet workload install android && dotnet workload install ios wasm-tools-net9 && dotnet workload restore && dotnet restore
+      run: dotnet workload install android && dotnet workload install ios wasm-tools-net9 && dotnet workload restore && dotnet workload update && dotnet workload install wasm-tools && dotnet nuget locals all --clear && dotnet restore
     - name: Build
       run: dotnet build --no-restore
     - name: Test
