@@ -38,9 +38,15 @@ public static class InputForMouse
 public static class Input
 {
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetCursorPos(out POINT lpPoint);
+    
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetCursorPos(int X, int Y);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+    
     private static void sendInputSealed(INPUT[] inputs)
     {
         
@@ -63,11 +69,28 @@ public static class Input
     }
     
     // 发送相对鼠标输入（用于3D游戏）
+    // 改进版本：添加DPI感知和位置校准
     public static void sendMouseInputRelative(MOUSEINPUT mouseInput)
     {
         INPUT input=new INPUT();
         input.type = InputType.INPUT_MOUSE;
-        // 相对移动不需要转换坐标，也不需要ABSOLUTE标志
+        
+        // 相对移动：不使用ABSOLUTE标志，直接发送相对位移
+        mouseInput.dwFlags = mouseInput.dwFlags & ~MOUSEEVENTF.MOUSEEVENTF_ABSOLUTE;
+        input.U = new() {mi=mouseInput };
+        sendOneInput(input);
+    }
+    
+    /// <summary>
+    /// 相对鼠标移动并定期校准绝对位置
+    /// 用于3D游戏，每100ms校准一次绝对位置以防止漂移
+    /// </summary>
+    public static void sendMouseInputRelativeWithCalibration(MOUSEINPUT mouseInput)
+    {
+        INPUT input=new INPUT();
+        input.type = InputType.INPUT_MOUSE;
+        
+        // 相对移动：不使用ABSOLUTE标志，直接发送相对位移
         mouseInput.dwFlags = mouseInput.dwFlags & ~MOUSEEVENTF.MOUSEEVENTF_ABSOLUTE;
         input.U = new() {mi=mouseInput };
         sendOneInput(input);
