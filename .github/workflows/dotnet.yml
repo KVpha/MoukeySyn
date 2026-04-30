@@ -1,6 +1,6 @@
-name: .NET CI
+name: Build C# Executable
 
-# 触发条件：当你 push 代码或者发起 Pull Request 时
+# 触发条件：当推送到 main 分支时
 on:
   push:
     branches: [ "main" ]
@@ -9,28 +9,30 @@ on:
 
 jobs:
   build:
-    # 使用最新的 Ubuntu 系统进行构建
-    runs-on: ubuntu-latest
+    # 运行在 Windows 环境以生成 exe
+    runs-on: windows-latest
 
     steps:
-    # 1. 检出代码
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
-    # 2. 设置 .NET 环境
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0.x' # 替换为你的项目版本，如 6.0.x, 7.0.x, 8.0.x
+        dotnet-version: '8.0.x' # 指定你的.NET版本
 
-    # 3. 安装依赖
     - name: Restore dependencies
       run: dotnet restore
 
-    # 4. 构建项目
     - name: Build
-      run: dotnet build --no-restore --configuration Release
+      run: dotnet build --configuration Release --no-restore
 
-    # 5. 运行测试
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
-      
+    - name: Publish
+      run: dotnet publish -c Release -r win-x64 --self-contained false -o ./publish
+
+    # 将编译出来的 exe 上传到 Artifacts
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: my-app-exe
+        path: ./publish/*.exe
+        
