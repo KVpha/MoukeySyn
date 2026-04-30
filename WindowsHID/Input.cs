@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -50,6 +50,8 @@ public static class Input
     {
         sendInputSealed(new INPUT[] {input});
     }
+    
+    // 发送绝对鼠标输入（原有逻辑）
     public static void sendMouseInput(MOUSEINPUT mouseInput)
     {
         INPUT input=new INPUT();
@@ -59,6 +61,18 @@ public static class Input
         input.U = new() {mi=mouseInput };
         sendOneInput(input);
     }
+    
+    // 发送相对鼠标输入（用于3D游戏）
+    public static void sendMouseInputRelative(MOUSEINPUT mouseInput)
+    {
+        INPUT input=new INPUT();
+        input.type = InputType.INPUT_MOUSE;
+        // 相对移动不需要转换坐标，也不需要ABSOLUTE标志
+        mouseInput.dwFlags = mouseInput.dwFlags & ~MOUSEEVENTF.MOUSEEVENTF_ABSOLUTE;
+        input.U = new() {mi=mouseInput };
+        sendOneInput(input);
+    }
+    
     public const int max = 65535;
     public static void convertLocation(ref MOUSEINPUT mouseInput)
     {
@@ -111,9 +125,6 @@ public static class Input
         {
         }
     }
-
-
-
 
 }
 [Flags]
