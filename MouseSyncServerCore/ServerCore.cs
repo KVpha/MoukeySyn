@@ -288,9 +288,9 @@ public class ServerCore
                         accumulatedDeltaY += e.deltaY;
                         
                         // 仅当增量足够大时才发送
-                        if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
-                            Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
-                        {
+                        //if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
+                        //    Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
+                        //{
                             clients[i].sendMouseRelative(new MouseInputData
                             {
                                 code = e.code,
@@ -300,7 +300,7 @@ public class ServerCore
                             });
                             accumulatedDeltaX = 0;
                             accumulatedDeltaY = 0;
-                        }
+                        //}
                     }
                 }
                 else
