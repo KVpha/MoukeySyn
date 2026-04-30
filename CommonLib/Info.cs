@@ -32,7 +32,7 @@ public class Info
     public int Server_Port = 34757;
     public string Server_IP  = null;
     public int Broadcast_Port = 34756;
-    public int MouseMovingRate = 5;
+    public int MouseMovingRate = 2;
     public bool IsHideOnStart=true;
     public bool IsEnableBroadcast = true;
     public bool IsRetryInstantly = false;
