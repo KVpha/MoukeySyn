@@ -102,7 +102,7 @@ public static class MouseHook
                 deltaY = hookStruct.pt.Y - lastMouseY;
                 
                 // 异常值检测：如果位移过大（>500像素），可能是瞬间跳跃，忽略
-                if (Math.Abs(deltaX) > 500 || Math.Abs(deltaY) > 500)
+                if (Math.Abs(deltaX) > 1000 || Math.Abs(deltaY) > 1000)
                 {
                     deltaX = 0;
                     deltaY = 0;
