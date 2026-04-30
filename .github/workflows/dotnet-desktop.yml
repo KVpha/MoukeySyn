@@ -79,7 +79,7 @@ jobs:
 
     # Execute all unit tests in the solution
     - name: Execute unit tests
-      run: dotnet workload install android && dotnet test
+      run: dotnet workload install android && dotnet workload install ios wasm-tools-net8 && dotnet workload restore && dotnet test
 
     # Restore the application to populate the obj folder with RuntimeIdentifiers
     - name: Restore the application
