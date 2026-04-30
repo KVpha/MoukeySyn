@@ -1,21 +1,40 @@
 
 using CommonLib;
+using System.Runtime.InteropServices;
 using WindowsHID;
 
 namespace MouseSyncServerCore;
+
 public class ServerCore
 {
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+    
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
 
     public LogHandler LogHandler { get; set; } = Console.WriteLine;
     public ConnectionServer connectionServer;
     int port = Info.instance.Server_Port;
     public static ServerCore instance;
     Thread broadcastThread;
+    Thread calibrationThread;  // 新增：校准线程
     
     // 用于相对鼠标模式的增量积累（防止过小的增量被忽略）
     private int accumulatedDeltaX = 0;
     private int accumulatedDeltaY = 0;
     private const int DELTA_THRESHOLD = 1; // 最小增量阈值
+    private object deltaLock = new object();
+    private volatile bool isRunning = true;
+    
+    private int lastCalibratedX = -1;  // 上次校准的X坐标
+    private int lastCalibratedY = -1;  // 上次校准的Y坐标
+    private long lastCalibrationTime = 0;
+    private const long CALIBRATION_INTERVAL = 100; // 100毫秒校准一次
 
     public ServerCore(LogHandler logHandler)
     {
@@ -81,6 +100,15 @@ public class ServerCore
         // 显示当前鼠标模式
         string mouseMode = Info.instance.UseRelativeMouseMode ? "Relative (3D Game Mode)" : "Absolute";
         LogHandler($"Mouse Mode: {mouseMode}");
+        
+        // 在相对模式下启动校准线程
+        if (Info.instance.UseRelativeMouseMode)
+        {
+            LogHandler("Starting mouse calibration thread (100ms interval)");
+            calibrationThread = new(() => CalibrationThreadProc())
+            { IsBackground = true };
+            calibrationThread.Start();
+        }
 
         LogHandler("----------Server is Ready----------");
         //printTable();
@@ -90,6 +118,61 @@ public class ServerCore
 
 
     }
+    
+    /// <summary>
+    /// 校准线程：定期向所有客户端发送绝对鼠标位置
+    /// </summary>
+    private void CalibrationThreadProc()
+    {
+        while (isRunning)
+        {
+            try
+            {
+                long currentTime = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+                
+                // 检查是否需要校准（100ms间隔）
+                if (currentTime - lastCalibrationTime >= CALIBRATION_INTERVAL)
+                {
+                    try
+                    {
+                        // 获取服务端当前鼠标位置
+                        if (GetCursorPos(out POINT currentPos))
+                        {
+                            lock (globalLock)
+                            {
+                                // 向所有客户端发送校准信息
+                                foreach (ClientPC pc in clients)
+                                {
+                                    pc.sendMouseCalibration(currentPos.X, currentPos.Y);
+                                }
+                            }
+                            
+                            lastCalibratedX = currentPos.X;
+                            lastCalibratedY = currentPos.Y;
+                            lastCalibrationTime = currentTime;
+                            
+                            if (Entry.isDebug)
+                            {
+                                LogHandler($"Mouse calibration sent: ({currentPos.X}, {currentPos.Y})");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogHandler($"Calibration error: {ex.Message}");
+                    }
+                }
+                
+                // 每10ms检查一次，不阻塞线程
+                Thread.Sleep(10);
+            }
+            catch (Exception ex)
+            {
+                LogHandler($"Calibration thread error: {ex.Message}");
+            }
+        }
+    }
+    
     private void printTable()
     {
         LogHandler("\nConnected Devices\tMachine Name\tResolution\tIP Address");
@@ -198,28 +281,31 @@ public class ServerCore
                 // 只发送鼠标移动事件的增量，忽略其他事件
                 if ((MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
                 {
-                    // 累积增量，避免过小的增量
-                    accumulatedDeltaX += e.deltaX;
-                    accumulatedDeltaY += e.deltaY;
-                    
-                    // 仅当增量足够大时才发送
-                    if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
-                        Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
+                    lock (deltaLock)
                     {
-                        clients[i].sendMouseRelative(new MouseInputData
+                        // 累积增量，避免过小的增量
+                        accumulatedDeltaX += e.deltaX;
+                        accumulatedDeltaY += e.deltaY;
+                        
+                        // 仅当增量足够大时才发送
+                        if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
+                            Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
                         {
-                            code = e.code,
-                            hookStruct = e.hookStruct,
-                            deltaX = accumulatedDeltaX,
-                            deltaY = accumulatedDeltaY
-                        });
-                        accumulatedDeltaX = 0;
-                        accumulatedDeltaY = 0;
+                            clients[i].sendMouseRelative(new MouseInputData
+                            {
+                                code = e.code,
+                                hookStruct = e.hookStruct,
+                                deltaX = accumulatedDeltaX,
+                                deltaY = accumulatedDeltaY
+                            });
+                            accumulatedDeltaX = 0;
+                            accumulatedDeltaY = 0;
+                        }
                     }
                 }
                 else
                 {
-                    // 非移动事件（��钮点击等）直接发送
+                    // 非移动事件（按钮点击等）直接发送
                     clients[i].sendMouseRelative(e);
                 }
             }
@@ -233,6 +319,7 @@ public class ServerCore
     }
     public void Stop()
     {
+        isRunning = false;
         connectionServer.close();
         Window.Destroy();
     }
