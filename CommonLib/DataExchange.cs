@@ -14,8 +14,9 @@ public static class DataExchange
 
     }
     //for client
-    public const string MOUSE= "m";              // 绝对鼠标移动
-    public const string MOUSE_RELATIVE = "mr";  // 相对鼠标移动（用于3D游戏）
+    public const string MOUSE= "m";                    // 绝对鼠标移动
+    public const string MOUSE_RELATIVE = "mr";        // 相对鼠标移动（用于3D游戏）
+    public const string MOUSE_CALIBRATE = "mc";       // 鼠标位置校准（同步绝对位置）
     public const string KEY = "k";
     
     public static readonly Dictionary<int, MOUSEEVENTF> MOUSE_KEY_MAP = new()
