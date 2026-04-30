@@ -53,7 +53,7 @@ public partial class MainPage : ContentPage
             sendData(517);
         };
         var realIP=Utils.getIPAddress();
-        MouseSyncServerCore.Network.boardcastIP = realIP;
+        MouseSyncServerCore.Networks.boardcastIP = realIP;
         logHandler("override IPv4 to "+realIP);
     }
     void sendData(int mouseCode)
