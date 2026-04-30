@@ -1,4 +1,4 @@
-﻿
+
 using CommonLib;
 using WindowsHID;
 
@@ -72,6 +72,10 @@ public class ServerCore
             { IsBackground = true };
             broadcastThread.Start();
         }
+        
+        // 显示当前鼠标模式
+        string mouseMode = Info.instance.UseRelativeMouseMode ? "Relative (3D Game Mode)" : "Absolute";
+        LogHandler($"Mouse Mode: {mouseMode}");
 
         LogHandler("----------Server is Ready----------");
         //printTable();
@@ -179,9 +183,18 @@ public class ServerCore
             );
         }
         if (isPause) return;
+        
+        // 根据配置选择发送模式
         for(int i = clients.Count - 1; i >= 0; i--)
         {
-            clients[i].sendMouse(e);
+            if (Info.instance.UseRelativeMouseMode)
+            {
+                clients[i].sendMouseRelative(e);
+            }
+            else
+            {
+                clients[i].sendMouse(e);
+            }
         }
 
     }
@@ -190,4 +203,4 @@ public class ServerCore
         connectionServer.close();
         Window.Destroy();
     }
-}  
+}
