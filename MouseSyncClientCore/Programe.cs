@@ -1,4 +1,4 @@
-﻿using CommonLib;
+using CommonLib;
 using MouseSync;
 using MouseSync.Client;
 using System;
@@ -14,8 +14,12 @@ namespace MouseSyncClientCore;
 
 public enum ClientFlags
 {
-    notsimulate,debug,ip
+    notsimulate,
+    debug,
+    ip,
+    relativemode  // 新增：相对鼠标模式标志
 }
+
 public class Programe
 {
     public static bool isDebug = false;
@@ -40,6 +44,14 @@ public class Programe
         {
             isDebug = true;
         }
+        
+        // 新增：检查相对鼠标模式标志
+        if (isContainFlag(args, ClientFlags.relativemode))
+        {
+            Info.instance.UseRelativeMouseMode = true;
+            Console.WriteLine("Relative Mouse Mode Enabled (for 3D Games)");
+        }
+        
         bool isSetIpMannully = false;
         try
         {
@@ -86,6 +98,10 @@ public class Programe
 
 
         Console.WriteLine("Try Connecting to "+Info.instance.Server_IP_Port);
+        
+        // 显示当前鼠标模式
+        string mouseMode = Info.instance.UseRelativeMouseMode ? "Relative (3D Game Mode)" : "Absolute";
+        Console.WriteLine($"Mouse Mode: {mouseMode}");
         
         while (true)
         {
