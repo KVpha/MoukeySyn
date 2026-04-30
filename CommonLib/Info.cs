@@ -37,7 +37,7 @@ public class Info
     public bool IsEnableBroadcast = true;
     public bool IsRetryInstantly = false;
     public bool IsEnableHotKey = true;
-    public bool UseRelativeMouseMode = false;  // 新增：是否使用相对鼠标移动模式（用于3D游戏）
+    public bool UseRelativeMouseMode = true;  // 新增：是否使用相对鼠标移动模式（用于3D游戏）
 
 
     public bool isServerUnset { get { return string.IsNullOrEmpty(Server_IP); } }
