@@ -124,17 +124,17 @@ public struct KBDLLHOOKSTRUCT
 /// <summary>
 /// 鼠标消息枚举
 /// </summary>
-public enum MouseMessagesHook : int
-{
-    WM_MOUSEMOVE = 0x0200,
-    WM_LBUTTONDOWN = 0x0201,
-    WM_LBUTTONUP = 0x0202,
-    WM_RBUTTONDOWN = 0x0204,
-    WM_RBUTTONUP = 0x0205,
-    WM_MBUTTONDOWN = 0x0207,
-    WM_MBUTTONUP = 0x0208,
-    WM_MOUSEWHEEL = 0x020A,
-}
+///public enum MouseMessagesHook : int
+///{
+///    WM_MOUSEMOVE = 0x0200,
+///    WM_LBUTTONDOWN = 0x0201,
+///    WM_LBUTTONUP = 0x0202,
+///    WM_RBUTTONDOWN = 0x0204,
+///    WM_RBUTTONUP = 0x0205,
+///    WM_MBUTTONDOWN = 0x0207,
+///    WM_MBUTTONUP = 0x0208,
+///    WM_MOUSEWHEEL = 0x020A,
+///}
 
 /// <summary>
 /// 键盘消息枚举
