@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 
 namespace MouseSyncServerCore;
@@ -62,7 +62,8 @@ public class ClientPC
         onMessgeReceived.Invoke(this, msg);
 
     }
-    //send data format: (x:y:mousedata:flags)
+    
+    // 发送绝对鼠标坐标
     public void sendMouse(MouseInputData e)
     {
         //Connection.send($"{e.pt.X}:{e.pt.Y}:{e.flags}:{e}");
@@ -74,6 +75,19 @@ public class ClientPC
             e.hookStruct.mouseData
             ));
     }
+    
+    // 发送相对鼠标位移（用于3D游戏）
+    public void sendMouseRelative(MouseInputData e)
+    {
+        Connection.send(Utils.format(
+            DataExchange.MOUSE_RELATIVE,
+            e.code,
+            e.deltaX,
+            e.deltaY,
+            e.hookStruct.mouseData
+            ));
+    }
+    
     public void sendKeyboard(KeyboardInputData data)
     {
         Connection.send(Utils.format(
