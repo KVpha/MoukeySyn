@@ -1,4 +1,4 @@
-﻿//using Newtonsoft.Json;
+//using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +37,7 @@ public class Info
     public bool IsEnableBroadcast = true;
     public bool IsRetryInstantly = false;
     public bool IsEnableHotKey = true;
+    public bool UseRelativeMouseMode = false;  // 新增：是否使用相对鼠标移动模式（用于3D游戏）
 
 
     public bool isServerUnset { get { return string.IsNullOrEmpty(Server_IP); } }
@@ -49,6 +50,7 @@ public class Info
     const string isEnableBroadcast = "Enable_Broadcast";
     const string isRetryInstantly = "Is_retry_instantly";
     const string isEnableHotKey = "Is_Enable_Hot-Key";
+    const string useRelativeMouseMode = "Use_Relative_Mouse_Mode";  // 新增
 
 
     private static bool isNeedSave=false;
@@ -69,6 +71,7 @@ public class Info
                 {isEnableBroadcast,instance.IsEnableBroadcast},
                 {isRetryInstantly,instance.IsRetryInstantly},
                 { isEnableHotKey,instance.IsEnableHotKey},
+                { useRelativeMouseMode,instance.UseRelativeMouseMode},  // 新增
             });
 
             Utils.writeFile(CLIENT_SETTING, text);
@@ -174,6 +177,7 @@ public class Info
             TrySet(ref instance.IsEnableBroadcast,isEnableBroadcast);
             TrySet(ref instance.IsRetryInstantly,isRetryInstantly);
             TrySet(ref instance.IsEnableHotKey,isEnableHotKey);
+            TrySet(ref instance.UseRelativeMouseMode,useRelativeMouseMode);  // 新增
             if (isNeedSave)
             {
                 save();
