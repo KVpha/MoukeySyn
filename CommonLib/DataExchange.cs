@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,8 +14,10 @@ public static class DataExchange
 
     }
     //for client
-    public const string MOUSE= "m";
+    public const string MOUSE= "m";              // 绝对鼠标移动
+    public const string MOUSE_RELATIVE = "mr";  // 相对鼠标移动（用于3D游戏）
     public const string KEY = "k";
+    
     public static readonly Dictionary<int, MOUSEEVENTF> MOUSE_KEY_MAP = new()
     {
         { (int)MouseMessagesHook.WM_MBUTTONUP,  MOUSEEVENTF.MOUSEEVENTF_MIDDLEUP },
