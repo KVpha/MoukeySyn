@@ -15,6 +15,12 @@ using WindowsHID;
 
 namespace MouseSync.Client;
 
+[StructLayout(LayoutKind.Sequential)]
+public struct POINT
+{
+    public int X;
+    public int Y;
+}
 
 public class ClientNetwork
 {
@@ -29,13 +35,9 @@ public class ClientNetwork
     public Connection Connection { get; private set; }
     public event EventHandler onLoaded=(s,b)=>LogHandler("Connected to server successfully");
     
-    // 用于校准的变量
-    private int lastCalibratedX = 0;
-    private int lastCalibratedY = 0;
-    private long lastCalibrationTime = 0;
-    private const long CALIBRATION_INTERVAL = 100; // 100毫秒校准一次
-    private bool isInRelativeMode = false;
-    private object calibrationLock = new object();
+    // 用于相对模式中保存上一次同步的绝对位置
+    private int lastSyncedX = 0;
+    private int lastSyncedY = 0;
     
     public ClientNetwork(in string ip,in int port) {
         //isSimulate = false;
@@ -82,6 +84,10 @@ public class ClientNetwork
             else if (splited[0] == DataExchange.MOUSE_RELATIVE)
             {
                 handleMouseEventRelative(splited);
+            }
+            else if (splited[0] == DataExchange.MOUSE_CALIBRATE)
+            {
+                handleMouseCalibration(splited);
             }
             else if (splited[0] == DataExchange.KEY)
             {
@@ -139,7 +145,6 @@ public class ClientNetwork
     }
     
     // 处理相对鼠标移动事件（用于3D游戏）
-    // 改进版本：添加定期校准功能防止位置漂移
     private void handleMouseEventRelative(string[] msg)
     {
         try
@@ -166,7 +171,7 @@ public class ClientNetwork
             {
                 if (Programe.isDebug)
                 {
-                    LogHandler("simulate btn press (relative mode)");
+                    LogHandler($"Mouse relative move: deltaX={deltaX}, deltaY={deltaY}");
                 }
                 if (DataExchange.MOUSE_KEY_MAP.ContainsKey(button))
                 {
@@ -182,9 +187,6 @@ public class ClientNetwork
             {
                 // 发送相对移动
                 Input.sendMouseInputRelative(mouseInput);
-                
-                // 定期校准绝对位置（每100ms）
-                CalibrateMousePosition();
             }
         }
         catch (Exception ex)
@@ -194,51 +196,50 @@ public class ClientNetwork
     }
     
     /// <summary>
-    /// 校准鼠标绝对位置，防止位置漂移
-    /// 每100毫秒执行一次，将鼠标位置锁定在中心点附近
+    /// 处理鼠标位置校准（同步绝对位置）
+    /// 服务端定期发送其当前鼠标位置，客户端将自己的鼠标位置同步到相同位置
+    /// 用于防止相对模式下的位置漂移
     /// </summary>
-    private void CalibrateMousePosition()
+    private void handleMouseCalibration(string[] msg)
     {
-        lock (calibrationLock)
+        try
         {
-            long currentTime = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+            int serverX = int.Parse(msg[1]);
+            int serverY = int.Parse(msg[2]);
             
-            // 检查是否需要校准（100ms间隔）
-            if (currentTime - lastCalibrationTime >= CALIBRATION_INTERVAL)
+            if (Programe.isDebug)
             {
-                try
+                LogHandler($"Mouse calibration received: server at ({serverX}, {serverY})");
+            }
+            
+            // 仅在相对模式下执行校准
+            if (isSimulate && Info.instance.UseRelativeMouseMode)
+            {
+                // 获取客户端当前鼠标位置
+                GetCursorPos(out POINT clientPos);
+                
+                // 计算位置差异
+                int deltaX = serverX - clientPos.X;
+                int deltaY = serverY - clientPos.Y;
+                
+                // 如果位置差异超过5像素，执行校准
+                if (Math.Abs(deltaX) > 5 || Math.Abs(deltaY) > 5)
                 {
-                    // 获取当前鼠标位置
-                    GetCursorPos(out POINT currentPos);
+                    // 将客户端鼠标位置同步到服务端位置
+                    SetCursorPos(serverX, serverY);
+                    lastSyncedX = serverX;
+                    lastSyncedY = serverY;
                     
-                    // 计算屏幕中心位置
-                    int centerX = Device.width / 2;
-                    int centerY = Device.height / 2;
-                    
-                    // 如果鼠标位置偏离中心太远，重新定位到中心
-                    int deltaX = currentPos.X - centerX;
-                    int deltaY = currentPos.Y - centerY;
-                    
-                    // 如果偏差超过50像素，进行校准
-                    if (Math.Abs(deltaX) > 50 || Math.Abs(deltaY) > 50)
+                    if (Programe.isDebug)
                     {
-                        SetCursorPos(centerX, centerY);
-                        lastCalibratedX = centerX;
-                        lastCalibratedY = centerY;
-                        
-                        if (Programe.isDebug)
-                        {
-                            LogHandler($"Mouse calibrated from ({currentPos.X}, {currentPos.Y}) to ({centerX}, {centerY})");
-                        }
+                        LogHandler($"Mouse position calibrated from ({clientPos.X}, {clientPos.Y}) to ({serverX}, {serverY})");
                     }
-                    
-                    lastCalibrationTime = currentTime;
-                }
-                catch (Exception ex)
-                {
-                    LogHandler($"Calibration error: {ex.Message}");
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            LogHandler($"Error in handleMouseCalibration: {ex.Message}");
         }
     }
     
@@ -269,11 +270,4 @@ public class ClientNetwork
         }
         
     }
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct POINT
-{
-    public int X;
-    public int Y;
 }
