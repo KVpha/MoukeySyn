@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
 using static System.Net.Mime.MediaTypeNames;
@@ -44,6 +44,10 @@ public static class MouseHook
         
     }
 
+    // 用于相对鼠标移动追踪
+    private static int lastMouseX = 0;
+    private static int lastMouseY = 0;
+    private static bool isFirstMove = true;
 
     public static void addCallback(EventHandler<MouseInputData> handler)
     {
@@ -85,7 +89,31 @@ public static class MouseHook
         void triggerEvent()
         {
             MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-            MouseAction?.Invoke(null, new MouseInputData() { code = (int)wParam, hookStruct = hookStruct });
+            
+            // 计算相对位移
+            int deltaX = 0;
+            int deltaY = 0;
+            if (!isFirstMove)
+            {
+                deltaX = hookStruct.pt.X - lastMouseX;
+                deltaY = hookStruct.pt.Y - lastMouseY;
+            }
+            else
+            {
+                isFirstMove = false;
+            }
+            
+            // 更新上次位置
+            lastMouseX = hookStruct.pt.X;
+            lastMouseY = hookStruct.pt.Y;
+            
+            MouseAction?.Invoke(null, new MouseInputData() 
+            { 
+                code = (int)wParam, 
+                hookStruct = hookStruct,
+                deltaX = deltaX,
+                deltaY = deltaY
+            });
         }
         if (nCode >= 0)
         {
