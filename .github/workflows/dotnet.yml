@@ -1,0 +1,36 @@
+name: .NET CI
+
+# 触发条件：当你 push 代码或者发起 Pull Request 时
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    # 使用最新的 Ubuntu 系统进行构建
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 检出代码
+    - uses: actions/checkout@v4
+
+    # 2. 设置 .NET 环境
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x' # 替换为你的项目版本，如 6.0.x, 7.0.x, 8.0.x
+
+    # 3. 安装依赖
+    - name: Restore dependencies
+      run: dotnet restore
+
+    # 4. 构建项目
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    # 5. 运行测试
+    - name: Test
+      run: dotnet test --no-build --verbosity normal
+      
