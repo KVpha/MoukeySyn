@@ -88,6 +88,19 @@ public class ClientPC
             ));
     }
     
+    /// <summary>
+    /// 发送鼠标位置校准信息（服务端鼠标位置同步到客户端）
+    /// 用于3D游戏模式下定期校准鼠标绝对位置，防止位置漂移
+    /// </summary>
+    public void sendMouseCalibration(int x, int y)
+    {
+        Connection.send(Utils.format(
+            DataExchange.MOUSE_CALIBRATE,
+            x,
+            y
+            ));
+    }
+    
     public void sendKeyboard(KeyboardInputData data)
     {
         Connection.send(Utils.format(
