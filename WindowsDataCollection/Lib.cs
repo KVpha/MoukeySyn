@@ -173,6 +173,16 @@ public record MouseInputData
     }
 
     public int code { set; get; }
+    
+    /// <summary>
+    /// 相对X位移（相对于上次位置）- 用于3D游戏模式
+    /// </summary>
+    public int deltaX { set; get; }
+    
+    /// <summary>
+    /// 相对Y位移（相对于上次位置）- 用于3D游戏模式
+    /// </summary>
+    public int deltaY { set; get; }
 }
 
 [StructLayout(LayoutKind.Sequential)]
