@@ -26,3 +26,11 @@ jobs:
       run: dotnet build --no-restore
     - name: Test
       run: dotnet test --no-build --verbosity normal
+    - name: Publish
+      # 发布项目，生成独立且单一的exe文件
+      run: dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: my-app-exe
+        path: ./publish/*.exe # 上传生成的exe文件
