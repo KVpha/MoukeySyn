@@ -84,19 +84,29 @@ public static class MouseHook
     }
     static int count = 0;
     public static int maxCount = 5;//for moving event,only (1/maxCount) of messages will be sent
+    
     private static IntPtr LowLevelMouseProcCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         void triggerEvent()
         {
             MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
             
-            // 计算相对位移
+            // 计算相对位移（改进版本）
             int deltaX = 0;
             int deltaY = 0;
+            
             if (!isFirstMove)
             {
+                // 计算自上次位置以来的位移
                 deltaX = hookStruct.pt.X - lastMouseX;
                 deltaY = hookStruct.pt.Y - lastMouseY;
+                
+                // 异常值检测：如果位移过大（>500像素），可能是瞬间跳跃，忽略
+                if (Math.Abs(deltaX) > 500 || Math.Abs(deltaY) > 500)
+                {
+                    deltaX = 0;
+                    deltaY = 0;
+                }
             }
             else
             {
@@ -115,6 +125,7 @@ public static class MouseHook
                 deltaY = deltaY
             });
         }
+        
         if (nCode >= 0)
         {
             if ((MouseMessagesHook)wParam == MouseMessagesHook.WM_MOUSEMOVE)
