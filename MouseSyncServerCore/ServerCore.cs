@@ -1,40 +1,22 @@
 
 using CommonLib;
-using System.Runtime.InteropServices;
 using WindowsHID;
 
 namespace MouseSyncServerCore;
 
 public class ServerCore
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetCursorPos(out POINT lpPoint);
-    
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
     public LogHandler LogHandler { get; set; } = Console.WriteLine;
     public ConnectionServer connectionServer;
     int port = Info.instance.Server_Port;
     public static ServerCore instance;
     Thread broadcastThread;
-    Thread calibrationThread;  // 新增：校准线程
     
-    // 用于相对鼠标模式的增量积累（防止过小的增量被忽略）
+    // 用于相对鼠标模式的增量积累
     private int accumulatedDeltaX = 0;
     private int accumulatedDeltaY = 0;
-    private const int DELTA_THRESHOLD = 1; // 最小增量阈值
     private object deltaLock = new object();
     private volatile bool isRunning = true;
-    
-    private int lastCalibratedX = -1;  // 上次校准的X坐标
-    private int lastCalibratedY = -1;  // 上次校准的Y坐标
-    private long lastCalibrationTime = 0;
-    private const long CALIBRATION_INTERVAL = 5000; // 100毫秒校准一次
 
     public ServerCore(LogHandler logHandler)
     {
@@ -42,13 +24,10 @@ public class ServerCore
         hotkeyManager = new(2, switchPause);
         instance = this;
 
-
-
         ConnectionHandler handler = conn =>
         {
             var c = new ClientPC(conn, (s, b) =>
             {
-
                 ClientPC c = (ClientPC)s;
 
                 if ((!string.IsNullOrEmpty(c.Name)) && (!string.IsNullOrEmpty(c.Resolution)))
@@ -56,10 +35,9 @@ public class ServerCore
                     printTable();
                     LogHandler($"{clients.Count}\t\t\t{c.Name}\t\t{c.Resolution}\t{c.IP}");
                 }
-
             });
-
         };
+
         connectionServer = new(port, handler, Networks.IsSupportIPv6);
         LogHandler($"Listenning on port {port} ");
 
@@ -100,83 +78,17 @@ public class ServerCore
         // 显示当前鼠标模式
         string mouseMode = Info.instance.UseRelativeMouseMode ? "Relative (3D Game Mode)" : "Absolute";
         LogHandler($"Mouse Mode: {mouseMode}");
-        
-        // 在相对模式下启动校准线程
-        if (Info.instance.UseRelativeMouseMode)
-        {
-            LogHandler("Starting mouse calibration thread (100ms interval)");
-            calibrationThread = new(() => CalibrationThreadProc())
-            { IsBackground = true };
-            calibrationThread.Start();
-        }
 
         LogHandler("----------Server is Ready----------");
-        //printTable();
     }
 
-    public ServerCore():this(Console.WriteLine) {
+    public ServerCore():this(Console.WriteLine) { }
 
-
-    }
-    
-    /// <summary>
-    /// 校准线程：定期向所有客户端发送绝对鼠标位置
-    /// </summary>
-    private void CalibrationThreadProc()
-    {
-        while (isRunning)
-        {
-            try
-            {
-                long currentTime = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-                
-                // 检查是否需要校准（100ms间隔）
-                if (currentTime - lastCalibrationTime >= CALIBRATION_INTERVAL)
-                {
-                    try
-                    {
-                        // 获取服务端当前鼠标位置
-                        if (GetCursorPos(out POINT currentPos))
-                        {
-                            lock (globalLock)
-                            {
-                                // 向所有客户端发送校准信息
-                                foreach (ClientPC pc in clients)
-                                {
-                                    pc.sendMouseCalibration(currentPos.X, currentPos.Y);
-                                }
-                            }
-                            
-                            lastCalibratedX = currentPos.X;
-                            lastCalibratedY = currentPos.Y;
-                            lastCalibrationTime = currentTime;
-                            
-                            if (Entry.isDebug)
-                            {
-                                LogHandler($"Mouse calibration sent: ({currentPos.X}, {currentPos.Y})");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogHandler($"Calibration error: {ex.Message}");
-                    }
-                }
-                
-                // 每10ms检查一次，不阻塞线程
-                Thread.Sleep(10);
-            }
-            catch (Exception ex)
-            {
-                LogHandler($"Calibration thread error: {ex.Message}");
-            }
-        }
-    }
-    
     private void printTable()
     {
         LogHandler("\nConnected Devices\tMachine Name\tResolution\tIP Address");
     }
+
     public static void start()
     {
         if(ServerCore.instance != null)
@@ -185,6 +97,7 @@ public class ServerCore
         }
         new ServerCore();
     }
+
     public static void wait()
     {
         ServerCore.instance.connectionServer.thread.Join();
@@ -200,18 +113,18 @@ public class ServerCore
     public readonly object globalLock = new();
     public event EventHandler<ClientPC> ClientAdd = (s, e) => { };
     public event EventHandler<ClientPC> ClientRemove;
+
     public void addClient(ClientPC pc)
     {
-
         lock (globalLock)
         {
             clients.Add(pc);
         }
         ClientAdd.Invoke(this, pc);
     }
+
     public void removeClient(ClientPC pc)
     {
-
         lock (globalLock)
         {
             clients.Remove(pc);
@@ -219,22 +132,21 @@ public class ServerCore
         ClientRemove.Invoke(this, pc);
     }
 
-
     bool isPause = false;
     private void switchPause()
     {
-        
         isPause = !isPause;
         Console.WriteLine((isPause ? "--Paused--" : "--Continuing--")+"----------Press Shift+F8 to change state");
     }
+
     HotkeyManager hotkeyManager;
+
     public void keyHandler(object? sender, KeyboardInputData e)
     {
         if (Entry.isDebug)
         {
             Console.WriteLine(e.HookStruct.vkCode+" "+e.code);
         }
-
 
         if (!isPause)
         {
@@ -243,6 +155,7 @@ public class ServerCore
                 pc.sendKeyboard(e);
             }
         }
+
         if (Info.instance.IsEnableHotKey)
         {
             if (e.HookStruct.vkCode == 161 || e.HookStruct.vkCode == 160)//shift
@@ -254,69 +167,52 @@ public class ServerCore
                 hotkeyManager.setState(0, e.code == 256);
             }
         }
-
     }
 
     public void mouseHandler(object? sender, MouseInputData e)
     {
-        if (Entry.isDebug)
+        if (Entry.isDebug && (MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
         {
-            Console.WriteLine(Utils.format(
-                DataExchange.MOUSE,
-                e.code,
-                e.hookStruct.pt.X,
-                e.hookStruct.pt.Y,
-                e.hookStruct.mouseData
-                )
-            );
+            Console.WriteLine($"Delta: ({e.deltaX}, {e.deltaY})");
         }
+
         if (isPause) return;
-        
+
         // 根据配置选择发送模式
         for(int i = clients.Count - 1; i >= 0; i--)
         {
-            if (Info.instance.UseRelativeMouseMode)
+            try
             {
-                // 相对鼠标模式：使用增量移动
-                // 只发送鼠标移动事件的增量，忽略其他事件
-                if ((MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
+                if (Info.instance.UseRelativeMouseMode)
                 {
-                    lock (deltaLock)
+                    // 相对鼠标模式：直接转发相对位移
+                    if ((MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
                     {
-                        // 累积增量，避免过小的增量
-                        accumulatedDeltaX += e.deltaX;
-                        accumulatedDeltaY += e.deltaY;
-                        
-                        // 仅当增量足够大时才发送
-                        //if (Math.Abs(accumulatedDeltaX) >= DELTA_THRESHOLD || 
-                        //    Math.Abs(accumulatedDeltaY) >= DELTA_THRESHOLD)
-                        //{
-                            clients[i].sendMouseRelative(new MouseInputData
-                            {
-                                code = e.code,
-                                hookStruct = e.hookStruct,
-                                deltaX = accumulatedDeltaX,
-                                deltaY = accumulatedDeltaY
-                            });
-                            accumulatedDeltaX = 0;
-                            accumulatedDeltaY = 0;
-                        //}
+                        // 对于移动事件，转发相对位移
+                        if (e.deltaX != 0 || e.deltaY != 0)
+                        {
+                            clients[i].sendMouseRelative(e);
+                        }
+                    }
+                    else
+                    {
+                        // 对于按钮事件，直接转发
+                        clients[i].sendMouseRelative(e);
                     }
                 }
                 else
                 {
-                    // 非移动事件（按钮点击等）直接发送
-                    clients[i].sendMouseRelative(e);
+                    // 绝对坐标模式：使用绝对位置
+                    clients[i].sendMouse(e);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                // 绝对坐标模式：使用绝对位置
-                clients[i].sendMouse(e);
+                LogHandler($"Error sending mouse event: {ex.Message}");
             }
         }
-
     }
+
     public void Stop()
     {
         isRunning = false;
