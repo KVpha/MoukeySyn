@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using WindowsHID;
 
@@ -23,28 +24,37 @@ public struct POINT
 public class ClientNetwork
 {
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetCursorPos(int X, int Y);
-    
-    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetCursorPos(out POINT lpPoint);
-    
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int mouse_event(
-        uint dwFlags,
-        uint dx,
-        uint dy,
-        uint dwData,
-        IntPtr dwExtraInfo);
     
     public static LogHandler LogHandler { set; get; } = Console.WriteLine;
     
     public Connection Connection { get; private set; }
     public event EventHandler onLoaded=(s,b)=>LogHandler("Connected to server successfully");
     
-    private bool isInRelativeMode = false;
-    
+    private MouseInputBuffer mouseBuffer;
+    private Thread smoothingThread;
+    private volatile bool isRunning = true;
+    private volatile bool isInRelativeMode = false;
+
     public ClientNetwork(in string ip,in int port) {
         isInRelativeMode = Info.instance.UseRelativeMouseMode;
+        
+        if (isInRelativeMode)
+        {
+            // 相对模式：初始化虚拟鼠标和缓冲
+            VirtualMouseDevice.Initialize();
+            mouseBuffer = new MouseInputBuffer();
+            
+            // 启动平滑处理线程
+            smoothingThread = new Thread(SmoothingThreadProc)
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.AboveNormal
+            };
+            smoothingThread.Start();
+            
+            LogHandler("[Client] Relative mouse mode activated with smoothing buffer");
+        }
         
         Connection = Connection.connect(ip,port,receive);
         Connection.onError += Connection_onError;
@@ -62,9 +72,51 @@ public class ClientNetwork
         }
     }
 
+    /// <summary>
+    /// 平滑处理线程
+    /// 从缓冲中读取鼠标增量并以恒定速率发送
+    /// </summary>
+    private void SmoothingThreadProc()
+    {
+        const int FRAME_INTERVAL = 8; // 约125fps (1000ms / 8ms = 125)
+        
+        try
+        {
+            while (isRunning)
+            {
+                long frameStart = Environment.TickCount64;
+                
+                // 获取平滑后的鼠标增量
+                if (mouseBuffer.GetSmoothDelta(out int deltaX, out int deltaY))
+                {
+                    // 发送到虚拟鼠标设备
+                    VirtualMouseDevice.SendRelativeMouseMove(deltaX, deltaY);
+                    
+                    if (Programe.isDebug && (deltaX != 0 || deltaY != 0))
+                    {
+                        LogHandler($"[SMOOTH] Sent: deltaX={deltaX}, deltaY={deltaY}, bufSize={mouseBuffer.GetBufferSize()}");
+                    }
+                }
+                
+                // 维持恒定帧率
+                long elapsed = Environment.TickCount64 - frameStart;
+                int sleepTime = (int)(FRAME_INTERVAL - elapsed);
+                if (sleepTime > 0)
+                {
+                    Thread.Sleep(sleepTime);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogHandler($"[Smoothing] Thread error: {ex.Message}");
+        }
+    }
+
     private void Connection_onError(Exception e)
     {
-        LogHandler("Connection has been interrupted,disconnected form server\n");
+        isRunning = false;
+        LogHandler("Connection has been interrupted, disconnected from server\n");
         throw e;
     }
 
@@ -153,8 +205,7 @@ public class ClientNetwork
     }
     
     /// <summary>
-    /// 处理相对鼠标移动（Raw Input模式）
-    /// 直接使用mouse_event驱动级API
+    /// 处理相对鼠标移动（缓冲 + 平滑模式）
     /// </summary>
     private void handleMouseEventRelative(string[] msg)
     {
@@ -165,93 +216,70 @@ public class ClientNetwork
             int deltaY = int.Parse(msg[3]);
             var mouseData = int.Parse(msg[4]);
             
-            if (Programe.isDebug && (deltaX != 0 || deltaY != 0))
-            {
-                LogHandler($"[RELATIVE] deltaX={deltaX}, deltaY={deltaY}");
-            }
-            
             MouseMessagesHook mouseMsg = (MouseMessagesHook)button;
 
             switch (mouseMsg)
             {
                 case MouseMessagesHook.WM_MOUSEMOVE:
-                    // 相对移动 - 直接调用mouse_event驱动级API
-                    if ((deltaX != 0 || deltaY != 0) && isSimulate)
+                    // 相对移动 - 添加到缓冲
+                    if (isInRelativeMode && isSimulate)
                     {
-                        // 使用mouse_event而不是SendInput
-                        // MOUSEEVENTF_MOVE = 0x0001
-                        const uint MOUSEEVENTF_MOVE = 0x0001;
+                        mouseBuffer.AddMouseDelta(deltaX, deltaY);
                         
-                        mouse_event(
-                            MOUSEEVENTF_MOVE,
-                            (uint)deltaX,
-                            (uint)deltaY,
-                            0,
-                            IntPtr.Zero
-                        );
+                        if (Programe.isDebug && (deltaX != 0 || deltaY != 0))
+                        {
+                            LogHandler($"[BUFFER] Added: deltaX={deltaX}, deltaY={deltaY}");
+                        }
                     }
                     break;
 
                 case MouseMessagesHook.WM_MOUSEWHEEL:
-                    // 滚轮
+                    // 滚轮 - 直接发送
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_WHEEL = 0x0800;
-                        mouse_event(
-                            MOUSEEVENTF_WHEEL,
-                            0,
-                            0,
-                            (uint)(mouseData >> 16),
-                            IntPtr.Zero
-                        );
+                        VirtualMouseDevice.SendMouseWheel((short)(mouseData >> 16));
                     }
                     break;
 
                 case MouseMessagesHook.WM_LBUTTONDOWN:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-                        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0002); // MOUSEEVENTF_LEFTDOWN
                     }
                     break;
 
                 case MouseMessagesHook.WM_LBUTTONUP:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_LEFTUP = 0x0004;
-                        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0004); // MOUSEEVENTF_LEFTUP
                     }
                     break;
 
                 case MouseMessagesHook.WM_RBUTTONDOWN:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-                        mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0008); // MOUSEEVENTF_RIGHTDOWN
                     }
                     break;
 
                 case MouseMessagesHook.WM_RBUTTONUP:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-                        mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0010); // MOUSEEVENTF_RIGHTUP
                     }
                     break;
 
                 case MouseMessagesHook.WM_MBUTTONDOWN:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
-                        mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0020); // MOUSEEVENTF_MIDDLEDOWN
                     }
                     break;
 
                 case MouseMessagesHook.WM_MBUTTONUP:
                     if (isSimulate)
                     {
-                        const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
-                        mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, IntPtr.Zero);
+                        VirtualMouseDevice.SendMouseButton(0x0040); // MOUSEEVENTF_MIDDLEUP
                     }
                     break;
             }
@@ -295,4 +323,33 @@ public class ClientNetwork
             LogHandler($"Error in handleKeyboardEvent: {ex.Message}");
         }
     }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct MOUSEINPUT
+{
+    public int dx;
+    public int dy;
+    public int mouseData;
+    public MOUSEEVENTF dwFlags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+
+    public MOUSEINPUT()
+    {
+    }
+}
+
+[Flags]
+public enum MOUSEEVENTF : uint
+{
+    MOUSEEVENTF_MOVE = 0x0001,
+    MOUSEEVENTF_LEFTDOWN = 0x0002,
+    MOUSEEVENTF_LEFTUP = 0x0004,
+    MOUSEEVENTF_RIGHTDOWN = 0x0008,
+    MOUSEEVENTF_RIGHTUP = 0x0010,
+    MOUSEEVENTF_MIDDLEDOWN = 0x0020,
+    MOUSEEVENTF_MIDDLEUP = 0x0040,
+    MOUSEEVENTF_ABSOLUTE = 0x8000,
+    MOUSEEVENTF_WHEEL = 0x0800,
 }
