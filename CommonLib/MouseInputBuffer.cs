@@ -15,8 +15,8 @@ public class MouseInputBuffer
     private readonly object queueLock = new();
     
     // 缓冲配置
-    private const int BUFFER_SIZE = 16; // 最多缓冲16帧
-    private const int SMOOTH_FRAMES = 4; // 将一个大的移动分散到4帧
+    private const int BUFFER_SIZE = 1; // 最多缓冲16帧
+    private const int SMOOTH_FRAMES = 1; // 将一个大的移动分散到4帧
 
     // 当前平滑状态
     private int smoothCounter = 0;
@@ -73,8 +73,8 @@ public class MouseInputBuffer
             if (smoothCounter > 0)
             {
                 // 使用整除法避免浮点精度问题
-                outDeltaX = smoothDeltaX / SMOOTH_FRAMES;
-                outDeltaY = smoothDeltaY / SMOOTH_FRAMES;
+                outDeltaX = smoothDeltaX / SMOOTH_FRAMES * 3;
+                outDeltaY = smoothDeltaY / SMOOTH_FRAMES * 3;
                 smoothCounter--;
                 return true;
             }
@@ -88,8 +88,8 @@ public class MouseInputBuffer
                 smoothCounter = SMOOTH_FRAMES - 1;
 
                 // 返回第一份（使用向上取整保证精度）
-                outDeltaX = (frame.DeltaX + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
-                outDeltaY = (frame.DeltaY + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
+                outDeltaX = (frame.DeltaX + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES * 3;
+                outDeltaY = (frame.DeltaY + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES * 3;
                 return true;
             }
 
