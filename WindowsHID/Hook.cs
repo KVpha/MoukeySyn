@@ -48,6 +48,7 @@ public static class MouseHook
     private static int lastMouseX = 0;
     private static int lastMouseY = 0;
     private static bool isFirstMove = true;
+    private static long lastEventTime = 0;
 
     public static void addCallback(EventHandler<MouseInputData> handler)
     {
@@ -82,41 +83,51 @@ public static class MouseHook
             hookID = IntPtr.Zero;
         }
     }
+    
     static int count = 0;
     public static int maxCount = 5;//for moving event,only (1/maxCount) of messages will be sent
     
+    /// <summary>
+    /// 低级鼠标钩子回调 - 捕获所有鼠标事件
+    /// 用于获取准确的相对鼠标位移数据
+    /// </summary>
     private static IntPtr LowLevelMouseProcCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         void triggerEvent()
         {
             MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
             
-            // 计算相对位移（改进版本）
+            // 计算相对位移
             int deltaX = 0;
             int deltaY = 0;
             
             if (!isFirstMove)
             {
-                // 计算自上次位置以来的位移
+                // 计算自上次位置以来的位移（直接差值，不进行任何处理）
                 deltaX = hookStruct.pt.X - lastMouseX;
                 deltaY = hookStruct.pt.Y - lastMouseY;
                 
-                // 异常值检测：如果位移过大（>500像素），可能是瞬间跳跃，忽略
-                if (Math.Abs(deltaX) > 1000 || Math.Abs(deltaY) > 1000)
+                // 仅过滤明显的异常值（可能是SetCursorPos导致的跳跃，通常在1000+像素）
+                // 同时允许快速移动（正常范围内的任何位移）
+                if (Math.Abs(deltaX) > 1200 || Math.Abs(deltaY) > 1200)
                 {
+                    // 极端异常值，可能是校准操作导致的，忽略
                     deltaX = 0;
                     deltaY = 0;
                 }
             }
             else
             {
+                // 第一次移动，初始化基准位置
                 isFirstMove = false;
             }
             
-            // 更新上次位置
+            // 更新位置记录
             lastMouseX = hookStruct.pt.X;
             lastMouseY = hookStruct.pt.Y;
+            lastEventTime = Environment.TickCount64;
             
+            // 触发事件，传递计算的相对位移
             MouseAction?.Invoke(null, new MouseInputData() 
             { 
                 code = (int)wParam, 
@@ -128,7 +139,10 @@ public static class MouseHook
         
         if (nCode >= 0)
         {
-            if ((MouseMessagesHook)wParam == MouseMessagesHook.WM_MOUSEMOVE)
+            MouseMessagesHook msg = (MouseMessagesHook)wParam;
+            
+            // 对于鼠标移动事件，使用采样率过滤
+            if (msg == MouseMessagesHook.WM_MOUSEMOVE)
             {
                 if (count == maxCount + 1 || count > maxCount + 1)
                 {
@@ -142,6 +156,7 @@ public static class MouseHook
             }
             else
             {
+                // 对于鼠标按钮事件，立即处理
                 triggerEvent();
             }
         }
@@ -196,6 +211,4 @@ public class KeyboardHook
             hookID = IntPtr.Zero;
         }
     }
-
-
 }
