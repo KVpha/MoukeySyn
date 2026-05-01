@@ -39,25 +39,19 @@ public static class Input
 {
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetCursorPos(out POINT lpPoint);
-    
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetCursorPos(int X, int Y);
-
-    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
     
     private static void sendInputSealed(INPUT[] inputs)
     {
-        
         SendInput((uint)inputs.Length,inputs,INPUT.Size);
     }
+    
     private static void sendOneInput(INPUT input)
     {
         sendInputSealed(new INPUT[] {input});
     }
     
-    // 发送绝对鼠标输入（原有逻辑）
+    // 发送绝对鼠标输入（用于桌面应用）
     public static void sendMouseInput(MOUSEINPUT mouseInput)
     {
         INPUT input=new INPUT();
@@ -68,35 +62,36 @@ public static class Input
         sendOneInput(input);
     }
     
-    // 发送相对鼠标输入（用于3D游戏）
-    // 改进版本：添加DPI感知和位置校准
+    /// <summary>
+    /// 发送相对鼠标输入（用于3D游戏）
+    /// 不使用ABSOLUTE标志，直接发送相对位移
+    /// 这样Windows会根据当前鼠标位置进行相对移动
+    /// </summary>
     public static void sendMouseInputRelative(MOUSEINPUT mouseInput)
     {
         INPUT input=new INPUT();
         input.type = InputType.INPUT_MOUSE;
         
-        // 相对移动：不使用ABSOLUTE标志，直接发送相对位移
+        // 确保不设置ABSOLUTE标志 - 这是关键！
         mouseInput.dwFlags = mouseInput.dwFlags & ~MOUSEEVENTF.MOUSEEVENTF_ABSOLUTE;
-        input.U = new() {mi=mouseInput };
-        sendOneInput(input);
-    }
-    
-    /// <summary>
-    /// 相对鼠标移动并定期校准绝对位置
-    /// 用于3D游戏，每100ms校准一次绝对位置以防止漂移
-    /// </summary>
-    public static void sendMouseInputRelativeWithCalibration(MOUSEINPUT mouseInput)
-    {
-        INPUT input=new INPUT();
-        input.type = InputType.INPUT_MOUSE;
+        // 为了确保SendInput识别这是相对移动，必须设置MOUSEEVENTF_MOVE标志
+        if ((mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_MOVE) == 0 && 
+            (mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_WHEEL) == 0 &&
+            (mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_LEFTDOWN) == 0 &&
+            (mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_LEFTUP) == 0 &&
+            (mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_RIGHTDOWN) == 0 &&
+            (mouseInput.dwFlags & MOUSEEVENTF.MOUSEEVENTF_RIGHTUP) == 0)
+        {
+            // 没有设置任何标志，默认添加MOVE标志
+            mouseInput.dwFlags |= MOUSEEVENTF.MOUSEEVENTF_MOVE;
+        }
         
-        // 相对移动：不使用ABSOLUTE标志，直接发送相对位移
-        mouseInput.dwFlags = mouseInput.dwFlags & ~MOUSEEVENTF.MOUSEEVENTF_ABSOLUTE;
         input.U = new() {mi=mouseInput };
         sendOneInput(input);
     }
     
     public const int max = 65535;
+    
     public static void convertLocation(ref MOUSEINPUT mouseInput)
     {
         int width = Device.width;
@@ -104,6 +99,7 @@ public static class Input
         mouseInput.dx = (int)(mouseInput.dx / (float)width * max);
         mouseInput.dy = (int)(mouseInput.dy/(float)height*max);
     }
+    
     public static void sendKeyboardInput(KEYBDINPUT keyboardInput)
     {
         INPUT input = new INPUT();
@@ -119,11 +115,11 @@ public static class Input
         public InputUnion U;
         public static int Size => Marshal.SizeOf(typeof(INPUT));
     }
+    
     public static class InputType 
     {
         public const int INPUT_MOUSE= 0;
         public const int INPUT_KETBOARD= 1;
-
     }
 
     [StructLayout(LayoutKind.Explicit)]
@@ -134,6 +130,7 @@ public static class Input
         [FieldOffset(0)]
         public KEYBDINPUT ki;
     }
+    
     // 定义KEYBDINPUT结构体，用于描述键盘输入信息
     [StructLayout(LayoutKind.Sequential)]
     public struct KEYBDINPUT
@@ -148,8 +145,8 @@ public static class Input
         {
         }
     }
-
 }
+
 [Flags]
 public enum MOUSEEVENTF : uint
 {
@@ -163,6 +160,7 @@ public enum MOUSEEVENTF : uint
     MOUSEEVENTF_ABSOLUTE = 0x8000,// 标示是否采用绝对坐标
     MOUSEEVENTF_WHEEL = 0x0800,
 }
+
 [Flags]
 public enum KEYEVENTF : int
 {
