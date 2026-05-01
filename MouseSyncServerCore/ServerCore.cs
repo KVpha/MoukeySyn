@@ -113,7 +113,7 @@ public class ServerCore
     /// <summary>
     /// 鼠标事件处理 - 立即转发
     /// </summary>
-    private void mouseHandler(object? sender, MouseInputData e)
+    public void mouseHandler(object? sender, MouseInputData e)
     {
         if (isPause) return;
 
@@ -148,7 +148,7 @@ public class ServerCore
     /// <summary>
     /// 键盘事件处理 - 立即转发
     /// </summary>
-    private void keyHandler(object? sender, KeyboardInputData e)
+    public void keyHandler(object? sender, KeyboardInputData e)
     {
         if (isPause) return;
 
