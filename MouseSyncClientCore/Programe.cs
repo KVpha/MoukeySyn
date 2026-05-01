@@ -91,7 +91,7 @@ public class Programe
                     {
                         break;
                     }
-                    Thread.Sleep(50);
+                    Thread.Sleep(1);
                 }
             }
         }
