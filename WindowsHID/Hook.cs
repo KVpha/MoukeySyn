@@ -55,7 +55,7 @@ public static class MouseHook
     
     // 用于过滤异常跳跃
     private static long lastEventTime = 0;
-    private static const long MIN_DELTA_TIME = 5; // 最少5ms才算正常事件
+    private const long MIN_DELTA_TIME = 5; // 最少5ms才算正常事件
 
     public static void addCallback(EventHandler<MouseInputData> handler)
     {
