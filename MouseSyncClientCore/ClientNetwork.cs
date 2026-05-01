@@ -28,13 +28,20 @@ public class ClientNetwork
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetCursorPos(out POINT lpPoint);
     
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int mouse_event(
+        uint dwFlags,
+        uint dx,
+        uint dy,
+        uint dwData,
+        IntPtr dwExtraInfo);
+    
     public static LogHandler LogHandler { set; get; } = Console.WriteLine;
     
     public Connection Connection { get; private set; }
     public event EventHandler onLoaded=(s,b)=>LogHandler("Connected to server successfully");
     
     private bool isInRelativeMode = false;
-    private object receiveLock = new object();
     
     public ClientNetwork(in string ip,in int port) {
         isInRelativeMode = Info.instance.UseRelativeMouseMode;
@@ -75,35 +82,29 @@ public class ClientNetwork
         
         var splited=msg.Split(DataExchange.SPLIT);
         
-        lock (receiveLock)
+        try
         {
-            try
+            if (splited[0] == DataExchange.MOUSE)
             {
-                if (splited[0] == DataExchange.MOUSE)
-                {
-                    handleMouseEvent(splited);
-                }
-                else if (splited[0] == DataExchange.MOUSE_RELATIVE)
-                {
-                    handleMouseEventRelative(splited);
-                }
-                else if (splited[0] == DataExchange.KEY)
-                {
-                    handleKeyboardEvent(splited);
-                }
+                handleMouseEvent(splited);
             }
-            catch(Exception e)
+            else if (splited[0] == DataExchange.MOUSE_RELATIVE)
             {
-                LogHandler($"Error Parse: {e.Message}");
+                handleMouseEventRelative(splited);
             }
+            else if (splited[0] == DataExchange.KEY)
+            {
+                handleKeyboardEvent(splited);
+            }
+        }
+        catch(Exception e)
+        {
+            LogHandler($"Error Parse: {e.Message}");
         }
     }
     
     public static bool isSimulate = true;
     
-    /// <summary>
-    /// 处理绝对鼠标移动事件（桌面模式）
-    /// </summary>
     private void handleMouseEvent(string[] msg)
     {
         try
@@ -152,8 +153,8 @@ public class ClientNetwork
     }
     
     /// <summary>
-    /// 处理相对鼠标移动事件（3D游戏模式 - 驱动级优化）
-    /// 使用mouse_event API直接在驱动层实现相对移动
+    /// 处理相对鼠标移动（Raw Input模式）
+    /// 直接使用mouse_event驱动级API
     /// </summary>
     private void handleMouseEventRelative(string[] msg)
     {
@@ -169,68 +170,89 @@ public class ClientNetwork
                 LogHandler($"[RELATIVE] deltaX={deltaX}, deltaY={deltaY}");
             }
             
-            // 检查事件类型
             MouseMessagesHook mouseMsg = (MouseMessagesHook)button;
-            
-            MOUSEINPUT mouseInput = new();
-            mouseInput.mouseData = mouseData;
 
             switch (mouseMsg)
             {
                 case MouseMessagesHook.WM_MOUSEMOVE:
-                    // 相对移动事件 - 使用驱动级mouse_event
-                    if (deltaX != 0 || deltaY != 0)
+                    // 相对移动 - 直接调用mouse_event驱动级API
+                    if ((deltaX != 0 || deltaY != 0) && isSimulate)
                     {
-                        mouseInput.dx = deltaX;
-                        mouseInput.dy = deltaY;
-                        mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_MOVE;
+                        // 使用mouse_event而不是SendInput
+                        // MOUSEEVENTF_MOVE = 0x0001
+                        const uint MOUSEEVENTF_MOVE = 0x0001;
                         
-                        if (isSimulate)
-                        {
-                            Input.sendMouseInputRelative(mouseInput);
-                        }
+                        mouse_event(
+                            MOUSEEVENTF_MOVE,
+                            (uint)deltaX,
+                            (uint)deltaY,
+                            0,
+                            IntPtr.Zero
+                        );
                     }
                     break;
 
                 case MouseMessagesHook.WM_MOUSEWHEEL:
-                    // 滚轮事件
-                    if (Programe.isDebug)
-                    {
-                        LogHandler("Simulate wheel (relative mode)");
-                    }
-                    mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_WHEEL;
-                    mouseInput.mouseData = mouseData >> 16;
-                    
+                    // 滚轮
                     if (isSimulate)
                     {
-                        Input.sendMouseButtonRelative(mouseInput);
+                        const uint MOUSEEVENTF_WHEEL = 0x0800;
+                        mouse_event(
+                            MOUSEEVENTF_WHEEL,
+                            0,
+                            0,
+                            (uint)(mouseData >> 16),
+                            IntPtr.Zero
+                        );
                     }
                     break;
 
                 case MouseMessagesHook.WM_LBUTTONDOWN:
-                case MouseMessagesHook.WM_LBUTTONUP:
-                case MouseMessagesHook.WM_RBUTTONDOWN:
-                case MouseMessagesHook.WM_RBUTTONUP:
-                case MouseMessagesHook.WM_MBUTTONDOWN:
-                case MouseMessagesHook.WM_MBUTTONUP:
-                    // 按钮事件
-                    if (DataExchange.MOUSE_KEY_MAP.ContainsKey(button))
+                    if (isSimulate)
                     {
-                        mouseInput.dwFlags = DataExchange.MOUSE_KEY_MAP[button];
-                        if (Programe.isDebug)
-                        {
-                            LogHandler($"Mouse button: {button}");
-                        }
-                        
-                        if (isSimulate)
-                        {
-                            Input.sendMouseButtonRelative(mouseInput);
-                        }
+                        const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+                        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, IntPtr.Zero);
                     }
                     break;
 
-                default:
-                    LogHandler($"Unknown mouse event: {mouseMsg}");
+                case MouseMessagesHook.WM_LBUTTONUP:
+                    if (isSimulate)
+                    {
+                        const uint MOUSEEVENTF_LEFTUP = 0x0004;
+                        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero);
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_RBUTTONDOWN:
+                    if (isSimulate)
+                    {
+                        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+                        mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero);
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_RBUTTONUP:
+                    if (isSimulate)
+                    {
+                        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+                        mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero);
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_MBUTTONDOWN:
+                    if (isSimulate)
+                    {
+                        const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+                        mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, IntPtr.Zero);
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_MBUTTONUP:
+                    if (isSimulate)
+                    {
+                        const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+                        mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, IntPtr.Zero);
+                    }
                     break;
             }
         }
@@ -266,10 +288,6 @@ public class ClientNetwork
                 {
                     Input.sendKeyboardInput(input);
                 }
-            }
-            else
-            {
-                LogHandler("Unknown Key code: " + code);
             }
         }
         catch (Exception ex)
