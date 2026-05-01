@@ -325,31 +325,3 @@ public class ClientNetwork
     }
 }
 
-[StructLayout(LayoutKind.Sequential)]
-public struct MOUSEINPUT
-{
-    public int dx;
-    public int dy;
-    public int mouseData;
-    public MOUSEEVENTF dwFlags;
-    public uint time;
-    public IntPtr dwExtraInfo;
-
-    public MOUSEINPUT()
-    {
-    }
-}
-
-[Flags]
-public enum MOUSEEVENTF : uint
-{
-    MOUSEEVENTF_MOVE = 0x0001,
-    MOUSEEVENTF_LEFTDOWN = 0x0002,
-    MOUSEEVENTF_LEFTUP = 0x0004,
-    MOUSEEVENTF_RIGHTDOWN = 0x0008,
-    MOUSEEVENTF_RIGHTUP = 0x0010,
-    MOUSEEVENTF_MIDDLEDOWN = 0x0020,
-    MOUSEEVENTF_MIDDLEUP = 0x0040,
-    MOUSEEVENTF_ABSOLUTE = 0x8000,
-    MOUSEEVENTF_WHEEL = 0x0800,
-}
