@@ -99,8 +99,8 @@ public class ClientPC
             string msg = Utils.format(
                 DataExchange.MOUSE_RELATIVE,
                 e.code,
-                e.deltaX*2,
-                e.deltaY*2,
+                e.deltaX*4,
+                e.deltaY*4,
                 e.hookStruct.mouseData
             );
             // 上面提高两倍偏移发送，20260502修改改善尝试
