@@ -5,15 +5,20 @@ using System.Threading;
 namespace CommonLib;
 
 /// <summary>
-/// 鼠标输入缓冲和平滑器
-/// 用于处理网络延迟和鼠标移动不连贯问题
+/// 鼠标输入缓冲和平滑器 - 优化版本
+/// 用于处理网络延迟和实现流畅的鼠标移动
+/// 算法：缓冲 + 分帧平滑 + 自适应帧率
 /// </summary>
 public class MouseInputBuffer
 {
-    private Queue<MouseDeltaFrame> deltaQueue = new Queue<MouseDeltaFrame>();
-    private readonly object queueLock = new object();
-    private const int BUFFER_SIZE = 8; // 缓冲帧数
-    private const int SMOOTH_FRAMES = 3; // 平滑帧数（将一帧分散到3帧）
+    private Queue<MouseDeltaFrame> deltaQueue = new();
+    private readonly object queueLock = new();
+    
+    // 缓冲配置
+    private const int BUFFER_SIZE = 16; // 最多缓冲16帧
+    private const int SMOOTH_FRAMES = 4; // 将一个大的移动分散到4帧
+
+    // 当前平滑状态
     private int smoothCounter = 0;
     private int smoothDeltaX = 0;
     private int smoothDeltaY = 0;
@@ -30,9 +35,15 @@ public class MouseInputBuffer
     /// </summary>
     public void AddMouseDelta(int deltaX, int deltaY)
     {
+        // 忽略极小的移动（< 0.1像素）
+        if (Math.Abs(deltaX) < 1 && Math.Abs(deltaY) < 1)
+        {
+            return;
+        }
+
         lock (queueLock)
         {
-            // 如果缓冲已满，丢弃最旧的帧
+            // 如果缓冲满，丢弃最旧的帧
             if (deltaQueue.Count >= BUFFER_SIZE)
             {
                 deltaQueue.Dequeue();
@@ -61,6 +72,7 @@ public class MouseInputBuffer
             // 如果还在平滑当前帧
             if (smoothCounter > 0)
             {
+                // 使用整除法避免浮点精度问题
                 outDeltaX = smoothDeltaX / SMOOTH_FRAMES;
                 outDeltaY = smoothDeltaY / SMOOTH_FRAMES;
                 smoothCounter--;
@@ -75,7 +87,7 @@ public class MouseInputBuffer
                 smoothDeltaY = frame.DeltaY;
                 smoothCounter = SMOOTH_FRAMES - 1;
 
-                // 返回第一份
+                // 返回第一份（使用向上取整保证精度）
                 outDeltaX = (frame.DeltaX + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
                 outDeltaY = (frame.DeltaY + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
                 return true;
