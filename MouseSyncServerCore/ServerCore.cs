@@ -12,10 +12,6 @@ public class ServerCore
     public static ServerCore instance;
     Thread broadcastThread;
     
-    // 用于相对鼠标模式的增量积累
-    private int accumulatedDeltaX = 0;
-    private int accumulatedDeltaY = 0;
-    private object deltaLock = new object();
     private volatile bool isRunning = true;
 
     public ServerCore(LogHandler logHandler)
@@ -39,34 +35,42 @@ public class ServerCore
         };
 
         connectionServer = new(port, handler, Networks.IsSupportIPv6);
-        LogHandler($"Listenning on port {port} ");
+        LogHandler($"Listening on port {port}");
 
         connectionServer.OnError += e => Console.Error.WriteLine(e.ToString());
 
-        MouseHook.maxCount = Info.instance.MouseMovingRate;
+        MouseHook.maxCount = Info.instance.UseRelativeMouseMode ? 1 : Info.instance.MouseMovingRate;
         ClientRemove += ServerCore_ClientRemove;
         LogHandler($"Local IPv4 is [{string.Join(", ", Networks.Ipv4s)}]");
+        
         if (Networks.IsSupportIPv6)
         {
             LogHandler($"Local IPv6 is [{string.Join(", ", Networks.Ipv6s)}]");
         }
         else
         {
-            LogHandler("Your network do NOT support IPv6");
+            LogHandler("Your network does NOT support IPv6");
         }
+        
         if (Info.instance.IsEnableBroadcast)
         {
             LogHandler("Starting Broadcast");
             broadcastThread = new(() => {
-
-                while (true)
+                while (isRunning)
                 {
-                    if (Networks.broadcast())
+                    try
                     {
-                        if (Entry.isDebug)
+                        if (Networks.broadcast())
                         {
-                            LogHandler("Broadcasting successful");
+                            if (Entry.isDebug)
+                            {
+                                LogHandler("Broadcasting successful");
+                            }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogHandler($"Broadcast error: {ex.Message}");
                     }
                     Thread.Sleep(2000);
                 }
@@ -76,7 +80,9 @@ public class ServerCore
         }
         
         // 显示当前鼠标模式
-        string mouseMode = Info.instance.UseRelativeMouseMode ? "Relative (3D Game Mode)" : "Absolute";
+        string mouseMode = Info.instance.UseRelativeMouseMode ? 
+            "Relative (3D Game Mode - Driver Level)" : 
+            "Absolute (Desktop Mode)";
         LogHandler($"Mouse Mode: {mouseMode}");
 
         LogHandler("----------Server is Ready----------");
@@ -133,10 +139,11 @@ public class ServerCore
     }
 
     bool isPause = false;
+    
     private void switchPause()
     {
         isPause = !isPause;
-        Console.WriteLine((isPause ? "--Paused--" : "--Continuing--")+"----------Press Shift+F8 to change state");
+        Console.WriteLine((isPause ? "--Paused--" : "--Continuing--") + "----------Press Shift+F8 to change state");
     }
 
     HotkeyManager hotkeyManager;
@@ -171,45 +178,35 @@ public class ServerCore
 
     public void mouseHandler(object? sender, MouseInputData e)
     {
-        if (Entry.isDebug && (MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
-        {
-            Console.WriteLine($"Delta: ({e.deltaX}, {e.deltaY})");
-        }
-
         if (isPause) return;
 
-        // 根据配置选择发送模式
-        for(int i = clients.Count - 1; i >= 0; i--)
+        try
         {
-            try
+            for(int i = clients.Count - 1; i >= 0; i--)
             {
-                if (Info.instance.UseRelativeMouseMode)
+                try
                 {
-                    // 相对鼠标模式：直接转发相对位移
-                    if ((MouseMessagesHook)e.code == MouseMessagesHook.WM_MOUSEMOVE)
+                    if (Info.instance.UseRelativeMouseMode)
                     {
-                        // 对于移动事件，转发相对位移
-                        if (e.deltaX != 0 || e.deltaY != 0)
-                        {
-                            clients[i].sendMouseRelative(e);
-                        }
+                        // 相对鼠标模式：直接转发原始数据
+                        // 不进行任何处理，确保准确性
+                        clients[i].sendMouseRelative(e);
                     }
                     else
                     {
-                        // 对于按钮事件，直接转发
-                        clients[i].sendMouseRelative(e);
+                        // 绝对坐标模式
+                        clients[i].sendMouse(e);
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    // 绝对坐标模式：使用绝对位置
-                    clients[i].sendMouse(e);
+                    LogHandler($"Error sending to client: {ex.Message}");
                 }
             }
-            catch (Exception ex)
-            {
-                LogHandler($"Error sending mouse event: {ex.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            LogHandler($"Error in mouseHandler: {ex.Message}");
         }
     }
 
