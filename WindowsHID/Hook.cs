@@ -38,7 +38,8 @@ public static class SystemLevel_IO
 }
 
 /// <summary>
-/// 传统鼠标钩子 - 用于绝对模式（桌面应用）
+/// 鼠标钩子 - 捕获所有鼠标事件
+/// 使用低级钩子(WH_MOUSE_LL)获取系统级鼠标事件
 /// </summary>
 public static class MouseHook
 {
@@ -47,7 +48,6 @@ public static class MouseHook
         
     }
 
-    // 用于相对鼠标移动追踪
     private static int lastMouseX = 0;
     private static int lastMouseY = 0;
     private static bool isFirstMove = true;
@@ -109,37 +109,46 @@ public static class MouseHook
 
                 if (msg == MouseMessagesHook.WM_MOUSEMOVE)
                 {
-                    if (count == maxCount + 1 || count > maxCount + 1)
+                    // 采样检查
+                    if (count >= maxCount)
                     {
                         count = 0;
                     }
-                    if (count == 0)
+                    else
                     {
-                        int deltaX = hookStruct.pt.X - lastMouseX;
-                        int deltaY = hookStruct.pt.Y - lastMouseY;
-
-                        lastMouseX = hookStruct.pt.X;
-                        lastMouseY = hookStruct.pt.Y;
-
-                        MouseAction?.Invoke(null, new MouseInputData()
-                        {
-                            code = (int)wParam,
-                            hookStruct = hookStruct,
-                            deltaX = deltaX,
-                            deltaY = deltaY
-                        });
+                        count++;
+                        return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
                     }
-                    count++;
                 }
-                else
+
+                // 计算相对位移
+                int deltaX = hookStruct.pt.X - lastMouseX;
+                int deltaY = hookStruct.pt.Y - lastMouseY;
+
+                // 异常值检测
+                if (Math.Abs(deltaX) > 2000 || Math.Abs(deltaY) > 2000)
+                {
+                    deltaX = 0;
+                    deltaY = 0;
+                }
+
+                lastMouseX = hookStruct.pt.X;
+                lastMouseY = hookStruct.pt.Y;
+
+                // 如果是第一次移动，不发送增量
+                if (!isFirstMove || msg != MouseMessagesHook.WM_MOUSEMOVE)
                 {
                     MouseAction?.Invoke(null, new MouseInputData()
                     {
                         code = (int)wParam,
                         hookStruct = hookStruct,
-                        deltaX = 0,
-                        deltaY = 0
+                        deltaX = deltaX,
+                        deltaY = deltaY
                     });
+                }
+                else
+                {
+                    isFirstMove = false;
                 }
             }
         }
