@@ -99,11 +99,11 @@ public class ClientPC
             string msg = Utils.format(
                 DataExchange.MOUSE_RELATIVE,
                 e.code,
-                e.deltaX,
-                e.deltaY,
+                e.deltaX*2,
+                e.deltaY*2,
                 e.hookStruct.mouseData
             );
-            
+            // 上面提高两倍偏移发送，20260502修改改善尝试
             // 鼠标事件优先发送，无延迟
             Connection.send(msg, priority: 10);
             Interlocked.Increment(ref sentCount);
