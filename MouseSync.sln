@@ -11,8 +11,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WindowsHID", "WindowsHID\Wi
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Configuration", "Configuration\Configuration.csproj", "{0EEB1011-4CE4-43D2-952B-2A8CD7010325}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestHID", "TestHID\TestHID.csproj", "{704B9376-2995-4C8E-BFA0-4348934DA965}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MouseSyncServerCore", "MouseSyncServerCore\MouseSyncServerCore.csproj", "{B9B8EFE9-BC19-4511-99A8-C48506C6D6C6}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MouseSyncServer", "MouseSyncServer\MouseSyncServer.csproj", "{BD908F02-6ABD-4DD4-A4EA-2A93C11C7301}"
