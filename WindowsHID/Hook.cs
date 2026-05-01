@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace WindowsHID;
 
@@ -14,10 +13,7 @@ public class Hook
     }
 }
 
-
 public delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-
 
 public static class SystemLevel_IO
 {
@@ -38,19 +34,15 @@ public static class SystemLevel_IO
 }
 
 /// <summary>
-/// 鼠标钩子 - 捕获所有鼠标事件
-/// 使用低级钩子(WH_MOUSE_LL)获取系统级鼠标事件
+/// 鼠标钩子 - 超低延迟版本
+/// 优化：删除采样逻辑，所有事件立即发送
 /// </summary>
 public static class MouseHook
 {
-    static MouseHook()
-    {
-        
-    }
-
     private static int lastMouseX = 0;
     private static int lastMouseY = 0;
     private static bool isFirstMove = true;
+    private static Stopwatch positionTimestamp = Stopwatch.StartNew();
 
     public static void addCallback(EventHandler<MouseInputData> handler)
     {
@@ -58,8 +50,10 @@ public static class MouseHook
     }
 
     private static IntPtr hookID = IntPtr.Zero;
-
     public static event EventHandler<MouseInputData>? MouseAction;
+
+    // 弃用：移除采样逻辑
+    public static int maxCount = 1; // 已弃用，保留向后兼容性
 
     public static void Start()
     {
@@ -75,13 +69,13 @@ public static class MouseHook
                     
                     if (hookID != IntPtr.Zero)
                     {
-                        Console.WriteLine("[Hook] Mouse hook installed successfully");
+                        Console.WriteLine("[✓] Mouse hook installed (ultra-low latency mode)");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Hook] Error: {ex.Message}");
+                Console.WriteLine($"[✗] Hook error: {ex.Message}");
             }
         }
     }
@@ -94,9 +88,6 @@ public static class MouseHook
             hookID = IntPtr.Zero;
         }
     }
-    
-    static int count = 0;
-    public static int maxCount = 5;
 
     private static IntPtr LowLevelMouseProcCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -107,49 +98,40 @@ public static class MouseHook
                 MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
                 MouseMessagesHook msg = (MouseMessagesHook)wParam;
 
-                if (msg == MouseMessagesHook.WM_MOUSEMOVE)
-                {
-                    // 采样检查
-                    if (count >= maxCount)
-                    {
-                        count = 0;
-                    }
-                    else
-                    {
-                        count++;
-                        return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-                    }
-                }
-
                 // 计算相对位移
                 int deltaX = hookStruct.pt.X - lastMouseX;
                 int deltaY = hookStruct.pt.Y - lastMouseY;
 
-                // 异常值检测
-                if (Math.Abs(deltaX) > 2000 || Math.Abs(deltaY) > 2000)
+                // 异常值检测（防止鼠标跳变）
+                if (Math.Abs(deltaX) > 3000 || Math.Abs(deltaY) > 3000)
                 {
-                    deltaX = 0;
-                    deltaY = 0;
+                    // 鼠标闪现，忽略本次
+                    lastMouseX = hookStruct.pt.X;
+                    lastMouseY = hookStruct.pt.Y;
+                    return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
                 }
 
                 lastMouseX = hookStruct.pt.X;
                 lastMouseY = hookStruct.pt.Y;
 
-                // 如果是第一次移动，不发送增量
-                if (!isFirstMove || msg != MouseMessagesHook.WM_MOUSEMOVE)
-                {
-                    MouseAction?.Invoke(null, new MouseInputData()
-                    {
-                        code = (int)wParam,
-                        hookStruct = hookStruct,
-                        deltaX = deltaX,
-                        deltaY = deltaY
-                    });
-                }
-                else
+                // 第一次移动时初始化，不发送增量
+                if (isFirstMove && msg == MouseMessagesHook.WM_MOUSEMOVE)
                 {
                     isFirstMove = false;
+                    positionTimestamp.Restart();
+                    return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
                 }
+
+                // 优化：所有事件无延迟立即发送
+                long timestamp = Stopwatch.GetTimestamp();
+                MouseAction?.Invoke(null, new MouseInputData()
+                {
+                    code = (int)wParam,
+                    hookStruct = hookStruct,
+                    deltaX = deltaX,
+                    deltaY = deltaY,
+                    timestamp = timestamp  // 高精度时间戳
+                });
             }
         }
         catch (Exception ex)
@@ -161,29 +143,39 @@ public static class MouseHook
     }
 }
 
-
-//keyboard
-
+/// <summary>
+/// 键盘钩子 - 无采样，立即发送
+/// </summary>
 public class KeyboardHook
 {
-    static KeyboardHook()
-    {
-        
-    }
     public static event EventHandler<KeyboardInputData> KeyboardAction;
-
     private static IntPtr hookID = IntPtr.Zero;
+
     public static void addCallback(EventHandler<KeyboardInputData> handler)
     {
         KeyboardAction += handler;
-    }   
+    }
+
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 )
+        if (nCode >= 0)
         {
-            KBDLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            KeyboardAction?.Invoke(null,new KeyboardInputData() 
-                {code=(int)wParam,HookStruct=hookStruct });
+            try
+            {
+                KBDLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+                long timestamp = Stopwatch.GetTimestamp();
+                
+                KeyboardAction?.Invoke(null, new KeyboardInputData()
+                {
+                    code = (int)wParam,
+                    HookStruct = hookStruct,
+                    timestamp = timestamp  // 高精度时间戳
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Keyboard Hook] Error: {ex.Message}");
+            }
         }
         return SystemLevel_IO.CallNextHookEx(nint.Zero, nCode, wParam, lParam);
     }
@@ -192,10 +184,25 @@ public class KeyboardHook
     {
         if (hookID == IntPtr.Zero)
         {
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule)
+            try
             {
-                hookID = SystemLevel_IO.SetWindowsHookEx(HookType.WH_KEYBOARD_LL, HookCallback, SystemLevel_IO.GetModuleHandle(curModule.ModuleName));
+                using (Process curProcess = Process.GetCurrentProcess())
+                using (ProcessModule curModule = curProcess.MainModule)
+                {
+                    hookID = SystemLevel_IO.SetWindowsHookEx(
+                        HookType.WH_KEYBOARD_LL, 
+                        HookCallback, 
+                        SystemLevel_IO.GetModuleHandle(curModule.ModuleName));
+                    
+                    if (hookID != IntPtr.Zero)
+                    {
+                        Console.WriteLine("[✓] Keyboard hook installed");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[✗] Keyboard hook error: {ex.Message}");
             }
         }
     }
