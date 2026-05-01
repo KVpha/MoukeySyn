@@ -37,6 +37,10 @@ public static class SystemLevel_IO
     public static extern IntPtr GetConsoleWindow();
 }
 
+/// <summary>
+/// 驱动级鼠标钩子 - 捕获底层鼠标事件
+/// 适用于3D游戏等直接读取底层鼠标数据的应用
+/// </summary>
 public static class MouseHook
 {
     static MouseHook()
@@ -48,7 +52,10 @@ public static class MouseHook
     private static int lastMouseX = 0;
     private static int lastMouseY = 0;
     private static bool isFirstMove = true;
+    
+    // 用于过滤异常跳跃
     private static long lastEventTime = 0;
+    private static const long MIN_DELTA_TIME = 5; // 最少5ms才算正常事件
 
     public static void addCallback(EventHandler<MouseInputData> handler)
     {
@@ -61,16 +68,29 @@ public static class MouseHook
 
     public static void Start()
     {
-        
         if (hookID == IntPtr.Zero)
         {
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule)
+            try
             {
-                nint handle;
-                handle= SystemLevel_IO.GetModuleHandle(curModule.ModuleName);
-                //handle=SystemLevel_IO.GetConsoleWindow();
-                hookID = SystemLevel_IO.SetWindowsHookEx(HookType.WH_MOUSE_LL, LowLevelMouseProcCallback, handle);
+                using (Process curProcess = Process.GetCurrentProcess())
+                using (ProcessModule curModule = curProcess.MainModule)
+                {
+                    nint handle = SystemLevel_IO.GetModuleHandle(curModule.ModuleName);
+                    hookID = SystemLevel_IO.SetWindowsHookEx(HookType.WH_MOUSE_LL, LowLevelMouseProcCallback, handle);
+                    
+                    if (hookID != IntPtr.Zero)
+                    {
+                        Console.WriteLine("[Hook] Mouse hook installed successfully (WH_MOUSE_LL)");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[Hook] Failed to install mouse hook");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Hook] Error starting mouse hook: {ex.Message}");
             }
         }
     }
@@ -81,85 +101,94 @@ public static class MouseHook
         {
             SystemLevel_IO.UnhookWindowsHookEx(hookID);
             hookID = IntPtr.Zero;
+            Console.WriteLine("[Hook] Mouse hook removed");
         }
     }
     
     static int count = 0;
-    public static int maxCount = 5;//for moving event,only (1/maxCount) of messages will be sent
-    
+    public static int maxCount = 1; // 相对模式下，每次都发送（不进行采样）
+
     /// <summary>
-    /// 低级鼠标钩子回调 - 捕获所有鼠标事件
-    /// 用于获取准确的相对鼠标位移数据
+    /// 低级鼠标钩子回调 - 直接捕获原始鼠标事件
+    /// 这是能捕获底层鼠标数据的最低级别API
     /// </summary>
     private static IntPtr LowLevelMouseProcCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        void triggerEvent()
+        try
         {
-            MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-            
-            // 计算相对位移
-            int deltaX = 0;
-            int deltaY = 0;
-            
-            if (!isFirstMove)
+            if (nCode >= 0)
             {
-                // 计算自上次位置以来的位移（直接差值，不进行任何处理）
-                deltaX = hookStruct.pt.X - lastMouseX;
-                deltaY = hookStruct.pt.Y - lastMouseY;
-                
-                // 仅过滤明显的异常值（可能是SetCursorPos导致的跳跃，通常在1000+像素）
-                // 同时允许快速移动（正常范围内的任何位移）
-                if (Math.Abs(deltaX) > 1200 || Math.Abs(deltaY) > 1200)
+                MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                MouseMessagesHook msg = (MouseMessagesHook)wParam;
+
+                // 只处理鼠标移动事件
+                if (msg == MouseMessagesHook.WM_MOUSEMOVE)
                 {
-                    // 极端异常值，可能是校准操作导致的，忽略
-                    deltaX = 0;
-                    deltaY = 0;
+                    // 计算时间差
+                    long currentTime = Environment.TickCount64;
+                    long timeDelta = currentTime - lastEventTime;
+                    
+                    // 计算位置差
+                    int deltaX = 0;
+                    int deltaY = 0;
+
+                    if (!isFirstMove)
+                    {
+                        deltaX = hookStruct.pt.X - lastMouseX;
+                        deltaY = hookStruct.pt.Y - lastMouseY;
+                        
+                        // 严格的异常值检测
+                        // 如果位移过大（通常> 2000像素），说明是SetCursorPos导致的跳跃或异常
+                        if (Math.Abs(deltaX) > 2000 || Math.Abs(deltaY) > 2000)
+                        {
+                            // 跳过这个事件，不触发回调
+                            lastMouseX = hookStruct.pt.X;
+                            lastMouseY = hookStruct.pt.Y;
+                            lastEventTime = currentTime;
+                            return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+                        }
+                    }
+                    else
+                    {
+                        isFirstMove = false;
+                    }
+
+                    // 更新位置和时间
+                    lastMouseX = hookStruct.pt.X;
+                    lastMouseY = hookStruct.pt.Y;
+                    lastEventTime = currentTime;
+
+                    // 触发事件，传递计算的相对位移
+                    var mouseData = new MouseInputData()
+                    {
+                        code = (int)wParam,
+                        hookStruct = hookStruct,
+                        deltaX = deltaX,
+                        deltaY = deltaY
+                    };
+
+                    MouseAction?.Invoke(null, mouseData);
+                }
+                else
+                {
+                    // 对于鼠标按钮事件，立即处理
+                    var mouseData = new MouseInputData()
+                    {
+                        code = (int)wParam,
+                        hookStruct = hookStruct,
+                        deltaX = 0,
+                        deltaY = 0
+                    };
+
+                    MouseAction?.Invoke(null, mouseData);
                 }
             }
-            else
-            {
-                // 第一次移动，初始化基准位置
-                isFirstMove = false;
-            }
-            
-            // 更新位置记录
-            lastMouseX = hookStruct.pt.X;
-            lastMouseY = hookStruct.pt.Y;
-            lastEventTime = Environment.TickCount64;
-            
-            // 触发事件，传递计算的相对位移
-            MouseAction?.Invoke(null, new MouseInputData() 
-            { 
-                code = (int)wParam, 
-                hookStruct = hookStruct,
-                deltaX = deltaX,
-                deltaY = deltaY
-            });
         }
-        
-        if (nCode >= 0)
+        catch (Exception ex)
         {
-            MouseMessagesHook msg = (MouseMessagesHook)wParam;
-            
-            // 对于鼠标移动事件，使用采样率过滤
-            if (msg == MouseMessagesHook.WM_MOUSEMOVE)
-            {
-                if (count == maxCount + 1 || count > maxCount + 1)
-                {
-                    count = 0;
-                }
-                if (count == 0)
-                {
-                    triggerEvent();
-                }
-                count++;
-            }
-            else
-            {
-                // 对于鼠标按钮事件，立即处理
-                triggerEvent();
-            }
+            Console.WriteLine($"[Hook] Error in mouse hook: {ex.Message}");
         }
+
         return SystemLevel_IO.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 }
