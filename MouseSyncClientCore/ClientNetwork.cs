@@ -33,7 +33,12 @@ public class ClientNetwork
     public Connection Connection { get; private set; }
     public event EventHandler onLoaded=(s,b)=>LogHandler("Connected to server successfully");
     
+    private bool isInRelativeMode = false;
+    private object receiveLock = new object();
+    
     public ClientNetwork(in string ip,in int port) {
+        isInRelativeMode = Info.instance.UseRelativeMouseMode;
+        
         Connection = Connection.connect(ip,port,receive);
         Connection.onError += Connection_onError;
         
@@ -67,28 +72,34 @@ public class ClientNetwork
         {
             LogHandler("Received: " + msg);
         }
+        
         var splited=msg.Split(DataExchange.SPLIT);
-        try{
-            if (splited[0] == DataExchange.MOUSE)
-            {
-                handleMouseEvent(splited);
-            }
-            else if (splited[0] == DataExchange.MOUSE_RELATIVE)
-            {
-                handleMouseEventRelative(splited);
-            }
-            else if (splited[0] == DataExchange.KEY)
-            {
-                handleKeyboardEvent(splited);
-            }
-        }
-        catch(Exception e)
+        
+        lock (receiveLock)
         {
-            LogHandler($"Error Parse: {e.Message}");
+            try
+            {
+                if (splited[0] == DataExchange.MOUSE)
+                {
+                    handleMouseEvent(splited);
+                }
+                else if (splited[0] == DataExchange.MOUSE_RELATIVE)
+                {
+                    handleMouseEventRelative(splited);
+                }
+                else if (splited[0] == DataExchange.KEY)
+                {
+                    handleKeyboardEvent(splited);
+                }
+            }
+            catch(Exception e)
+            {
+                LogHandler($"Error Parse: {e.Message}");
+            }
         }
     }
     
-    public static bool isSimulate=true;
+    public static bool isSimulate = true;
     
     /// <summary>
     /// 处理绝对鼠标移动事件（桌面模式）
@@ -141,8 +152,8 @@ public class ClientNetwork
     }
     
     /// <summary>
-    /// 处理相对鼠标移动事件（3D游戏模式）
-    /// 直接转发相对位移值给Windows SendInput
+    /// 处理相对鼠标移动事件（3D游戏模式 - 驱动级优化）
+    /// 使用mouse_event API直接在驱动层实现相对移动
     /// </summary>
     private void handleMouseEventRelative(string[] msg)
     {
@@ -153,52 +164,74 @@ public class ClientNetwork
             int deltaY = int.Parse(msg[3]);
             var mouseData = int.Parse(msg[4]);
             
-            // 调试输出
             if (Programe.isDebug && (deltaX != 0 || deltaY != 0))
             {
-                LogHandler($"[RELATIVE] button={button}, deltaX={deltaX}, deltaY={deltaY}, mouseData={mouseData}");
+                LogHandler($"[RELATIVE] deltaX={deltaX}, deltaY={deltaY}");
             }
+            
+            // 检查事件类型
+            MouseMessagesHook mouseMsg = (MouseMessagesHook)button;
             
             MOUSEINPUT mouseInput = new();
-            mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_MOVE;
+            mouseInput.mouseData = mouseData;
 
-            // 判断事件类型
-            if (button == (int)MouseMessagesHook.WM_MOUSEWHEEL) 
+            switch (mouseMsg)
             {
-                // 滚轮事件
-                if (Programe.isDebug)
-                {
-                    LogHandler("Simulate wheel (relative mode)");
-                }
-                mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_WHEEL;
-                mouseInput.mouseData = mouseData >> 16;
-            }
-            else if (button == (int)MouseMessagesHook.WM_MOUSEMOVE)
-            {
-                // 移动事件 - 直接使用相对位移
-                mouseInput.dx = deltaX;
-                mouseInput.dy = deltaY;
-                mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_MOVE;
-            }
-            else if (DataExchange.MOUSE_KEY_MAP.ContainsKey(button))
-            {
-                // 按钮事件（左键、右键等）
-                if (Programe.isDebug)
-                {
-                    LogHandler($"Mouse button: {button}");
-                }
-                mouseInput.dwFlags = DataExchange.MOUSE_KEY_MAP[button];
-            }
-            else
-            {
-                LogHandler($"Error: Unknown mouse event code: {button}");
-                return;
-            }
-            
-            // 发送输入
-            if (isSimulate)
-            {
-                Input.sendMouseInputRelative(mouseInput);
+                case MouseMessagesHook.WM_MOUSEMOVE:
+                    // 相对移动事件 - 使用驱动级mouse_event
+                    if (deltaX != 0 || deltaY != 0)
+                    {
+                        mouseInput.dx = deltaX;
+                        mouseInput.dy = deltaY;
+                        mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_MOVE;
+                        
+                        if (isSimulate)
+                        {
+                            Input.sendMouseInputRelative(mouseInput);
+                        }
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_MOUSEWHEEL:
+                    // 滚轮事件
+                    if (Programe.isDebug)
+                    {
+                        LogHandler("Simulate wheel (relative mode)");
+                    }
+                    mouseInput.dwFlags = MOUSEEVENTF.MOUSEEVENTF_WHEEL;
+                    mouseInput.mouseData = mouseData >> 16;
+                    
+                    if (isSimulate)
+                    {
+                        Input.sendMouseButtonRelative(mouseInput);
+                    }
+                    break;
+
+                case MouseMessagesHook.WM_LBUTTONDOWN:
+                case MouseMessagesHook.WM_LBUTTONUP:
+                case MouseMessagesHook.WM_RBUTTONDOWN:
+                case MouseMessagesHook.WM_RBUTTONUP:
+                case MouseMessagesHook.WM_MBUTTONDOWN:
+                case MouseMessagesHook.WM_MBUTTONUP:
+                    // 按钮事件
+                    if (DataExchange.MOUSE_KEY_MAP.ContainsKey(button))
+                    {
+                        mouseInput.dwFlags = DataExchange.MOUSE_KEY_MAP[button];
+                        if (Programe.isDebug)
+                        {
+                            LogHandler($"Mouse button: {button}");
+                        }
+                        
+                        if (isSimulate)
+                        {
+                            Input.sendMouseButtonRelative(mouseInput);
+                        }
+                    }
+                    break;
+
+                default:
+                    LogHandler($"Unknown mouse event: {mouseMsg}");
+                    break;
             }
         }
         catch (Exception ex)
@@ -228,6 +261,7 @@ public class ClientNetwork
                     wScan = scanCode,
                     dwFlags = (uint)flag
                 };
+                
                 if(isSimulate)
                 {
                     Input.sendKeyboardInput(input);
