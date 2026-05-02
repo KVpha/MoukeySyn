@@ -60,6 +60,7 @@ public static class Window
     const int WS_CAPTION = 0x00C00000;
     const int WS_MINIMIZEBOX = 0x00020000;
     const int WS_MAXIMIZEBOX = 0x00010000;
+    const int WS_EX_TOOLWINDOW = 0x00000080;
 
     const int SW_SHOWNORMAL = 1;
 
