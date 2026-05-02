@@ -6,10 +6,114 @@ namespace WindowsHID;
 
 public class Hook
 {
+    private static bool useRawInput = false;
+
+    public static void SetRawInputMode(bool enabled)
+    {
+        useRawInput = enabled;
+    }
+
     public static void StartAll()
     {
         MouseHook.Start();
         KeyboardHook.Start();
+
+        // 如果启用 Raw Input，订阅事件并转接
+        if (useRawInput)
+        {
+            RawInputCapture.RawMouseMoved += RawInputCapture_RawMouseMoved;
+            RawInputCapture.RawMouseButtonChanged += RawInputCapture_RawMouseButtonChanged;
+            Console.WriteLine("[✓] Raw Input events hooked");
+        }
+    }
+
+    /// <summary>
+    /// 处理原始鼠标移动事件 - 转接为 MouseInputData
+    /// </summary>
+    private static void RawInputCapture_RawMouseMoved(object sender, RawMouseEventArgs e)
+    {
+        try
+        {
+            // 构造 MouseInputData
+            var mouseData = new MouseInputData()
+            {
+                code = (int)MouseMessagesHook.WM_MOUSEMOVE,
+                hookStruct = new MSLLHOOKSTRUCT()
+                {
+                    pt = new POINT() { X = 0, Y = 0 },
+                    mouseData = 0,
+                    flags = 0,
+                    time = (uint)Environment.TickCount,
+                    dwExtraInfo = IntPtr.Zero
+                },
+                deltaX = e.DeltaX,
+                deltaY = e.DeltaY,
+                timestamp = e.Timestamp
+            };
+
+            MouseHook.InvokeMouseAction(mouseData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hook] Error in RawMouseMoved: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 处理原始鼠标按钮事件 - 转接为 MouseInputData
+    /// </summary>
+    private static void RawInputCapture_RawMouseButtonChanged(object sender, RawMouseEventArgs e)
+    {
+        try
+        {
+            // 根据 ButtonFlags 确定按钮事件类型
+            MouseMessagesHook msgType = MouseMessagesHook.WM_MOUSEMOVE;
+
+            const uint RI_MOUSE_LEFT_BUTTON_DOWN = 0x0001;
+            const uint RI_MOUSE_LEFT_BUTTON_UP = 0x0002;
+            const uint RI_MOUSE_RIGHT_BUTTON_DOWN = 0x0004;
+            const uint RI_MOUSE_RIGHT_BUTTON_UP = 0x0008;
+            const uint RI_MOUSE_MIDDLE_BUTTON_DOWN = 0x0010;
+            const uint RI_MOUSE_MIDDLE_BUTTON_UP = 0x0020;
+            const uint RI_MOUSE_WHEEL = 0x0400;
+
+            if ((e.ButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN) != 0)
+                msgType = MouseMessagesHook.WM_LBUTTONDOWN;
+            else if ((e.ButtonFlags & RI_MOUSE_LEFT_BUTTON_UP) != 0)
+                msgType = MouseMessagesHook.WM_LBUTTONUP;
+            else if ((e.ButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN) != 0)
+                msgType = MouseMessagesHook.WM_RBUTTONDOWN;
+            else if ((e.ButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP) != 0)
+                msgType = MouseMessagesHook.WM_RBUTTONUP;
+            else if ((e.ButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN) != 0)
+                msgType = MouseMessagesHook.WM_MBUTTONDOWN;
+            else if ((e.ButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP) != 0)
+                msgType = MouseMessagesHook.WM_MBUTTONUP;
+            else if ((e.ButtonFlags & RI_MOUSE_WHEEL) != 0)
+                msgType = MouseMessagesHook.WM_MOUSEWHEEL;
+
+            var mouseData = new MouseInputData()
+            {
+                code = (int)msgType,
+                hookStruct = new MSLLHOOKSTRUCT()
+                {
+                    pt = new POINT() { X = 0, Y = 0 },
+                    mouseData = (int)e.WheelDelta,
+                    flags = 0,
+                    time = (uint)Environment.TickCount,
+                    dwExtraInfo = IntPtr.Zero
+                },
+                deltaX = 0,
+                deltaY = 0,
+                timestamp = e.Timestamp
+            };
+
+            MouseHook.InvokeMouseAction(mouseData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hook] Error in RawMouseButtonChanged: {ex.Message}");
+        }
     }
 }
 
@@ -36,6 +140,7 @@ public static class SystemLevel_IO
 /// <summary>
 /// 鼠标钩子 - 超低延迟版本
 /// 优化：删除采样逻辑，所有事件立即发送
+/// 支持与 Raw Input 共存
 /// </summary>
 public static class MouseHook
 {
@@ -89,6 +194,14 @@ public static class MouseHook
         }
     }
 
+    /// <summary>
+    /// 内部方法：直接调用 MouseAction 事件（供 Raw Input 适配器使用）
+    /// </summary>
+    internal static void InvokeMouseAction(MouseInputData data)
+    {
+        MouseAction?.Invoke(null, data);
+    }
+
     private static IntPtr LowLevelMouseProcCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         try
@@ -114,7 +227,7 @@ public static class MouseHook
                 lastMouseX = hookStruct.pt.X;
                 lastMouseY = hookStruct.pt.Y;
 
-                // 第一次移动时初始化，不发送增量
+                // 第一次移动时初始化，不发送��量
                 if (isFirstMove && msg == MouseMessagesHook.WM_MOUSEMOVE)
                 {
                     isFirstMove = false;
