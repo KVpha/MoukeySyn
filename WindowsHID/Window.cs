@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,6 +10,11 @@ using System.Runtime.InteropServices;
 namespace WindowsHID;
 public static class Window
 {
+    // 消息常量
+    private const uint WM_INPUT = 0x00FF;
+    private const uint WM_DESTROY = 0x0002;
+    private const uint WM_QUIT = 0x0012;
+
     // Import the necessary functions from user32.dll
     [DllImport("user32.dll")]
     public static extern IntPtr CreateWindowEx(
@@ -46,6 +51,9 @@ public static class Window
     [DllImport("user32.dll")]
     public static extern IntPtr DispatchMessage(ref MSG lpMsg);
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     // Define constants for window styles
     const int WS_OVERLAPPED = 0x00000000;
     const int WS_SYSMENU = 0x00080000;
@@ -74,20 +82,28 @@ public static class Window
         public int x;
         public int y;
     }
-    static Thread thread;
-    public static void Create()
-    {
 
+    static Thread thread;
+    private static IntPtr hWnd;
+    private static bool useRawInput = false;
+
+    /// <summary>
+    /// 创建窗口并启动消息循环
+    /// </summary>
+    /// <param name="enableRawInput">是否启用 Raw Input 捕捉</param>
+    public static void Create(bool enableRawInput = false)
+    {
+        useRawInput = enableRawInput;
         thread = new(Loop);
         thread.Start();
-
     }
+
     public static void Loop()
     {
-        IntPtr hWnd = CreateWindowEx(
+        hWnd = CreateWindowEx(
             0,
             "Static",
-            "这是一个你应该看不见的隐藏窗口",
+            "MouseSync Hidden Window (Raw Input)",
             WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
             100, 100, 400, 300,
             IntPtr.Zero,
@@ -95,25 +111,68 @@ public static class Window
             IntPtr.Zero,
             IntPtr.Zero
         );
-        Hook.StartAll();
-        //ShowWindow(hWnd, SW_SHOWNORMAL);
 
+        if (hWnd == IntPtr.Zero)
+        {
+            Console.WriteLine("[✗] Failed to create window");
+            return;
+        }
+
+        Console.WriteLine($"[✓] Window created: {hWnd}");
+
+        // 初始化 Raw Input（如果启用）
+        if (useRawInput)
+        {
+            if (RawInputCapture.Initialize(hWnd))
+            {
+                Console.WriteLine("[✓] Raw Input initialized");
+            }
+            else
+            {
+                Console.WriteLine("[✗] Failed to initialize Raw Input");
+                useRawInput = false;
+            }
+        }
+
+        Hook.StartAll();
         UpdateWindow(hWnd);
 
         MSG msg;
         while (GetMessage(out msg, IntPtr.Zero, 0, 0))
         {
-            
+            // 处理 WM_INPUT 消息
+            if (msg.message == WM_INPUT && useRawInput)
+            {
+                try
+                {
+                    RawInputCapture.ProcessRawInput(msg.lParam);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[!] Error processing WM_INPUT: {ex.Message}");
+                }
+            }
+
             TranslateMessage(ref msg);
             DispatchMessage(ref msg);
         }
+
+        // 清理 Raw Input
+        if (useRawInput)
+        {
+            RawInputCapture.Cleanup();
+        }
     }
+
     public static void Destroy()
     {
-        thread.Interrupt();
-        DestroyWindow(hWnd);
+        thread?.Interrupt();
+        if (hWnd != IntPtr.Zero)
+        {
+            DestroyWindow(hWnd);
+        }
     }
-     static IntPtr hWnd;
+
     static void Main()
     {
         IntPtr hWnd = CreateWindowEx(
@@ -134,7 +193,7 @@ public static class Window
             UpdateWindow(hWnd);
 
             MSG msg;
-            while (GetMessage(out msg, IntPtr.Zero, 0, 0) )
+            while (GetMessage(out msg, IntPtr.Zero, 0, 0))
             {
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
