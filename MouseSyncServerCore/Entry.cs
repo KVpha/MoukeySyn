@@ -26,7 +26,8 @@ public class Entry
             isDebug = true;
         }
         // hide()报错修改对应rawinput模式不hide()
-        if (Info.instance.IsHideOnStart && !useRawInput)
+        Program prog = new Program();
+        if (Info.instance.IsHideOnStart && !prog.useRawInput)
         {
             HideWindow.Hide();
         }
