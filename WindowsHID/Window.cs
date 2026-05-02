@@ -100,12 +100,13 @@ public static class Window
 
     public static void Loop()
     {
+        // hide()报错修改对应raw input 窗口使用隐藏任务栏方式，宽高设为0
         hWnd = CreateWindowEx(
-            0,
+            WS_EX_TOOLWINDOW,
             "Static",
             "MouseSync Hidden Window (Raw Input)",
             WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
-            100, 100, 400, 300,
+            100, 100, 0, 0,
             IntPtr.Zero,
             IntPtr.Zero,
             IntPtr.Zero,
