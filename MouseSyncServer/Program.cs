@@ -31,6 +31,7 @@ public class Programe
         }
 
         // 创建窗口（并可选启用 Raw Input）
+        Console.WriteLine("创建钩子窗口");
         if (isCreateFakeWindowAndHook)
         {
             if (useRawInput)
