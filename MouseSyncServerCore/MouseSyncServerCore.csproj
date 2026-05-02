@@ -9,7 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CommonLib\CommonLib.csproj" />
-    <ProjectReference Include="..\MouseSyncServer\MouseSyncServer.csproj" />
     <ProjectReference Include="..\WindowsDataCollection\WindowsDataCollection.csproj" />
   </ItemGroup>
 </Project>
