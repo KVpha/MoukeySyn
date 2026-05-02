@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using MouseSyncServer;
 
 namespace MouseSyncServerCore;
 
@@ -26,9 +25,9 @@ public class Entry
         {
             isDebug = true;
         }
-        // hide()报错修改对应rawinput模式不hide()
-        Program prog = new Program();
-        if (Info.instance.IsHideOnStart && !prog.useRawInput)
+        // hide()报错修改对应rawinput模式不hide()，跳过hide
+        bool useRawInput = true;
+        if (Info.instance.IsHideOnStart && !useRawInput)
         {
             HideWindow.Hide();
         }
