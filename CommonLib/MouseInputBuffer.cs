@@ -73,8 +73,8 @@ public class MouseInputBuffer
             if (smoothCounter > 0)
             {
                 // 使用整除法避免浮点精度问题
-                outDeltaX = smoothDeltaX / SMOOTH_FRAMES * 3;
-                outDeltaY = smoothDeltaY / SMOOTH_FRAMES * 3;
+                outDeltaX = smoothDeltaX / SMOOTH_FRAMES;
+                outDeltaY = smoothDeltaY / SMOOTH_FRAMES;
                 smoothCounter--;
                 return true;
             }
@@ -88,8 +88,8 @@ public class MouseInputBuffer
                 smoothCounter = SMOOTH_FRAMES - 1;
 
                 // 返回第一份（使用向上取整保证精度）
-                outDeltaX = (frame.DeltaX + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES * 3;
-                outDeltaY = (frame.DeltaY + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES * 3;
+                outDeltaX = (frame.DeltaX + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
+                outDeltaY = (frame.DeltaY + SMOOTH_FRAMES - 1) / SMOOTH_FRAMES;
                 return true;
             }
 
